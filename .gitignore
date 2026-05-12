@@ -20,6 +20,7 @@ phytozome_inputs/
 *.fastq
 *.fastq.gz
 *.tab
+*.log
 
 # Python
 __pycache__/
