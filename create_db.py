@@ -42,6 +42,12 @@ def main():
     formatted_fasta, formatted_annot = phytozome2psams(fasta, args.species, args.version, args.descriptions, fasta.parent)
     db_file = PROJECT_ROOT / 'db' / f"{args.species}_{args.version}_prueba.db"
 
+    # ensure directory exists
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # ensure file exists (empty if not created by SQLite yet)
+    db_file.touch(exist_ok=True)
+
     if args.lowmem:
         # create kmers and add directly to the db, using low RAM but much more time
         print(f"Creating {args.species} DB in low memory mode...")
