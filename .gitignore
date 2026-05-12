@@ -1,0 +1,26 @@
+# Temporary files
+tmp/
+cache/
+logs/
+
+# Conda environments
+env/
+conda_env/
+
+# Outputs
+results/
+outputs/
+db/
+phytozome_formatted/
+phytozome_inputs/
+
+# Large bioinformatics files
+*.bam
+*.sam
+*.fastq
+*.fastq.gz
+*.tab
+
+# Python
+__pycache__/
+*.pyc
