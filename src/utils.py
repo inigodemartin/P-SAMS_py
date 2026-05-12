@@ -258,14 +258,15 @@ def add_species_to_config(config_file, species, sql_db, mrna_path):
     Append a new species block to the configuration file.
 
     Args:
-        config_file (str): path to config file
-        species (str): species name
-        sql_db (str): SQLite database filename
-        mrna_path (str): path to mRNA FASTA
+        config_file: path to config file
+        specie: species name
+        sql_db: SQLite database filename
+        mrna_path: path to mRNA FASTA
     """
 
-    config_path = Path(config_file)
-
+    config_path = Path(config_file) 
+    # create empty file if it doesn't exist
+    config_path.touch(exist_ok=True)
     block = (
         f"\n"
         f"[{species}]\n"

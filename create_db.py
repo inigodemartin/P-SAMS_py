@@ -42,19 +42,19 @@ def main():
     formatted_fasta, formatted_annot = phytozome2psams(fasta, args.species, args.version, args.descriptions, fasta.parent)
     db_file = PROJECT_ROOT / 'db' / f"{args.species}_{args.version}_prueba.db"
 
-    # if args.lowmem:
-    #     # create kmers and add directly to the db, using low RAM but much more time
-    #     print(f"Creating {args.species} DB in low memory mode...")
-    #     create_kmer_db(db_file, formatted_fasta, args.ksize, formatted_annot)
-    # else:
-    #     # create kmer file
-    #     print("Creating kmer file")
-    #     kmer_file = add_species(formatted_fasta, args.ksize)
+    if args.lowmem:
+        # create kmers and add directly to the db, using low RAM but much more time
+        print(f"Creating {args.species} DB in low memory mode...")
+        create_kmer_db(db_file, formatted_fasta, args.ksize, formatted_annot)
+    else:
+        # create kmer file
+        print("Creating kmer file")
+        kmer_file = add_species(formatted_fasta, args.ksize)
 
-    #     # load kamer file and descriptions to the database
-    #     print("Creating database")
+        # load kamer file and descriptions to the database
+        print("Creating database")
         
-    #     create_sqlite_db(db_file, kmer_file, formatted_annot)
+        create_sqlite_db(db_file, kmer_file, formatted_annot)
 
     # Load database info in config file
     add_species_to_config(PROJECT_ROOT / "psams.conf", args.species, db_file, fasta)
