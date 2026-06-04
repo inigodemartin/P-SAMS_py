@@ -49,6 +49,11 @@ jobs:
           cd fasta36/src
           cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/mac_x86_64/
 
+      - name: Test TargetFinder on Mac
+        run: |
+          file bin/mac_x86_64/ssearch36
+          chmod +x bin/mac_x86_64/ssearch36
+          bin/mac_x86_64/ssearch36
       - uses: actions/upload-artifact@v4
         with:
           name: mac-x86_64-bin
@@ -74,11 +79,6 @@ jobs:
           cd fasta36/src
           cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/mac_arm64/
 
-      - name: Test TargetFinder on Mac
-        run: |
-          file bin/mac_arm64/ssearch36
-          chmod +x bin/mac_arm64/ssearch36
-          bin/mac_arm64/ssearch36
 
       - uses: actions/upload-artifact@v4
         with:
