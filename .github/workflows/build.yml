@@ -1,0 +1,41 @@
+name: build-fasta36
+
+on:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build FASTA36 (Linux)
+        run: |
+          git clone https://github.com/wrpearson/fasta36.git
+          cd fasta36/src
+          make -f Makefile.linux_sse2
+          mkdir -p $GITHUB_WORKSPACE/bin/linux
+          cp ssearch36 $GITHUB_WORKSPACE/bin/linux/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-bin
+          path: bin/linux/
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build FASTA36 (macOS)
+        run: |
+          git clone https://github.com/wrpearson/fasta36.git
+          cd fasta36/src
+          make -f Makefile.os_x86_64
+          mkdir -p $GITHUB_WORKSPACE/bin/mac_x86_64
+          cp ssearch36 $GITHUB_WORKSPACE/bin/mac_x86_64/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-bin
+          path: bin/mac_x86_64/
