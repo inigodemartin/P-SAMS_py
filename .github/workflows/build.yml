@@ -15,7 +15,7 @@ jobs:
           cd fasta36/src
           make -f ../make/Makefile.linux_sse2
           mkdir -p $GITHUB_WORKSPACE/bin/linux
-          cp ssearch36 $GITHUB_WORKSPACE/bin/linux/
+          cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/linux/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -33,7 +33,7 @@ jobs:
           cd fasta36/src
           make -f ../make/Makefile.os_x86_64
           mkdir -p $GITHUB_WORKSPACE/bin/mac_x86_64
-          cp ssearch36 $GITHUB_WORKSPACE/bin/mac_x86_64/
+          cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/mac_x86_64/
 
       - uses: actions/upload-artifact@v4
         with:
