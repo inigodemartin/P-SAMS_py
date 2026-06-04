@@ -9,17 +9,35 @@ use constant DEBUG => 0;
 # Begin variable declarations
 ################################################################################
 
-# Get environment variables
-my $dir;
-if ($ENV{'TMPDIR'}) {
-	$dir = $ENV{'TMPDIR'};
+use FindBin;
+
+my $bin_dir = $FindBin::Bin;
+
+my $arch = `uname -m`;
+chomp($arch);
+
+my $fasta;
+
+if ($^O eq 'darwin') {
+
+    if ($arch eq 'arm64') {
+        $fasta = "$bin_dir/ssearch36_arm64";
+    }
+    elsif ($arch eq 'x86_64') {
+        $fasta = "$bin_dir/ssearch36_x86_64";
+    }
+    else {
+        die "Unsupported Mac architecture: $arch\n";
+    }
+
 } else {
-	$dir = '/tmp';
+
+    # Linux
+    $fasta = "$bin_dir/ssearch36_linux";
 }
 
-# Smith-Waterman alignment programs (with threads)
-use FindBin;
-my $fasta = "$FindBin::Bin/ssearch36";
+# safety check
+die "ssearch36 not found at $fasta\n" unless -e $fasta;
 
 if (DEBUG) {
 	open (LOG, ">targetfinder.log") or die " Cannot open targetfinder.log: $!\n\n";
