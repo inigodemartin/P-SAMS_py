@@ -9,6 +9,15 @@ use constant DEBUG => 0;
 # Begin variable declarations
 ################################################################################
 
+# Get environment variables
+my $dir;
+if ($ENV{'TMPDIR'}) {
+	$dir = $ENV{'TMPDIR'};
+} else {
+	$dir = '/tmp';
+}
+
+# Smith-Waterman alignment programs (with threads)
 use FindBin;
 
 my $bin_dir = $FindBin::Bin;
@@ -32,7 +41,7 @@ if ($^O eq 'darwin') {
 
 } else {
 
-    # Linux
+    # Linux (asumes un binario único)
     $fasta = "$bin_dir/ssearch36_linux";
 }
 
