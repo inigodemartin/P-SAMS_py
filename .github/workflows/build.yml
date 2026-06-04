@@ -13,7 +13,7 @@ jobs:
         run: |
           git clone https://github.com/wrpearson/fasta36.git
           cd fasta36/src
-          make -f Makefile.linux_sse2
+          make -f ../make/Makefile.linux_sse2
           mkdir -p $GITHUB_WORKSPACE/bin/linux
           cp ssearch36 $GITHUB_WORKSPACE/bin/linux/
 
@@ -31,7 +31,7 @@ jobs:
         run: |
           git clone https://github.com/wrpearson/fasta36.git
           cd fasta36/src
-          make -f Makefile.os_x86_64
+          make -f ../make/Makefile.os_x86_64
           mkdir -p $GITHUB_WORKSPACE/bin/mac_x86_64
           cp ssearch36 $GITHUB_WORKSPACE/bin/mac_x86_64/
 
