@@ -13,7 +13,7 @@ outputs/
 db/
 phytozome_formatted/
 phytozome_inputs/
-*_psams_output/
+*_psams_output/ 
 
 # Large bioinformatics files
 *.bam
