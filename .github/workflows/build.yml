@@ -4,40 +4,74 @@ on:
   workflow_dispatch:
 
 jobs:
+
   linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone FASTA36
+        run: git clone https://github.com/wrpearson/fasta36.git
+
       - name: Build FASTA36 (Linux)
         run: |
-          git clone https://github.com/wrpearson/fasta36.git
           cd fasta36/src
-          make -f ../make/Makefile.linux_sse2 
-          ls ../bin/
-          mkdir -p $GITHUB_WORKSPACE/bin/linux
-          cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/linux/
+          make -f ../make/Makefile.linux_sse2
+
+      - name: Copy binary
+        run: |
+          mkdir -p bin/linux
+          cp fasta36/src/ssearch36 bin/linux/
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux-bin
           path: bin/linux/
 
-  mac:
+
+  mac_intel:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build FASTA36 (macOS)
+      - name: Clone FASTA36
+        run: git clone https://github.com/wrpearson/fasta36.git
+
+      - name: Build FASTA36 (macOS Intel)
         run: |
-          git clone https://github.com/wrpearson/fasta36.git
           cd fasta36/src
           make -f ../make/Makefile.os_x86_64
-          ls ../bin/
-          mkdir -p $GITHUB_WORKSPACE/bin/mac_x86_64 
-          cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/mac_x86_64/
+
+      - name: Copy binary
+        run: |
+          mkdir -p bin/mac_x86_64
+          cp fasta36/src/ssearch36 bin/mac_x86_64/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: mac-bin
+          name: mac-x86_64-bin
           path: bin/mac_x86_64/
+
+
+  mac_arm:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone FASTA36
+        run: git clone https://github.com/wrpearson/fasta36.git
+
+      - name: Build FASTA36 (macOS ARM)
+        run: |
+          cd fasta36/src
+          make -f ../make/Makefile.os_x_arm64
+
+      - name: Copy binary
+        run: |
+          mkdir -p bin/mac_arm64
+          cp fasta36/src/ssearch36 bin/mac_arm64/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm64-bin
+          path: bin/mac_arm64/
