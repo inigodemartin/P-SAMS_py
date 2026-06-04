@@ -19,7 +19,7 @@ if ($ENV{'TMPDIR'}) {
 
 # Smith-Waterman alignment programs (with threads)
 use FindBin;
-my $fasta = "$FindBin::Bin/ssearch35_t";
+my $fasta = "$FindBin::Bin/ssearch36";
 
 if (DEBUG) {
 	open (LOG, ">targetfinder.log") or die " Cannot open targetfinder.log: $!\n\n";

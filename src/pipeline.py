@@ -374,7 +374,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
             site['name'] = f"{construct}{optimal_ref[0]}"
 
             if bg:
-
+                
                 cmd = [
                     targetfinder,
                     "-s", site['guide'],

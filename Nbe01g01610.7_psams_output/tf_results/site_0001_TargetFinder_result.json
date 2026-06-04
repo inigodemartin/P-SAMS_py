@@ -1,0 +1,106 @@
+{
+    "amiRNA0": {
+        "hits": [
+            {
+                "Target accession": "Nbe01g01610.3 pacid=70127267 locus=Nbe01g01610 ID=Nbe01g01610.3.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "1",
+                "Coordinates": "2053-2073",
+                "Strand": "+",
+                "Target sequence": "AUGGAAACCGAGAAAACCGAA",
+                "Base pairing": "&nbsp::::::::::::::::::::",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe01g01610.4 pacid=70127268 locus=Nbe01g01610 ID=Nbe01g01610.4.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "1",
+                "Coordinates": "1977-1997",
+                "Strand": "+",
+                "Target sequence": "AUGGAAACCGAGAAAACCGAA",
+                "Base pairing": "&nbsp::::::::::::::::::::",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe01g01610.1 pacid=70127269 locus=Nbe01g01610 ID=Nbe01g01610.1.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "1",
+                "Coordinates": "1792-1812",
+                "Strand": "+",
+                "Target sequence": "AUGGAAACCGAGAAAACCGAA",
+                "Base pairing": "&nbsp::::::::::::::::::::",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe01g01610.7 pacid=70127272 locus=Nbe01g01610 ID=Nbe01g01610.7.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "1",
+                "Coordinates": "1751-1771",
+                "Strand": "+",
+                "Target sequence": "AUGGAAACCGAGAAAACCGAA",
+                "Base pairing": "&nbsp::::::::::::::::::::",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe01g01610.2 pacid=70127270 locus=Nbe01g01610 ID=Nbe01g01610.2.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "1",
+                "Coordinates": "1716-1736",
+                "Strand": "+",
+                "Target sequence": "AUGGAAACCGAGAAAACCGAA",
+                "Base pairing": "&nbsp::::::::::::::::::::",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe01g01610.5 pacid=70127271 locus=Nbe01g01610 ID=Nbe01g01610.5.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "1",
+                "Coordinates": "1709-1729",
+                "Strand": "+",
+                "Target sequence": "AUGGAAACCGAGAAAACCGAA",
+                "Base pairing": "&nbsp::::::::::::::::::::",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe01g01610.6 pacid=70127273 locus=Nbe01g01610 ID=Nbe01g01610.6.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "1",
+                "Coordinates": "1675-1695",
+                "Strand": "+",
+                "Target sequence": "AUGGAAACCGAGAAAACCGAA",
+                "Base pairing": "&nbsp::::::::::::::::::::",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe02g13820.1 pacid=70098960 locus=Nbe02g13820 ID=Nbe02g13820.1.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "2.5",
+                "Coordinates": "1963-1983",
+                "Strand": "+",
+                "Target sequence": "AUGGGAACCGAGAAAACCGGA",
+                "Base pairing": "&nbsp:::.::::::::::::::.:",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe02g13820.2 pacid=70098959 locus=Nbe02g13820 ID=Nbe02g13820.2.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "unknown CONTAINS KOG:EC:3.2.1.23",
+                "Score": "2.5",
+                "Coordinates": "1886-1906",
+                "Strand": "+",
+                "Target sequence": "AUGGGAACCGAGAAAACCGGA",
+                "Base pairing": "&nbsp:::.::::::::::::::.:",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            },
+            {
+                "Target accession": "Nbe13g25320.1 pacid=70137096 locus=Nbe13g25320 ID=Nbe13g25320.1.v1.0 annot-version=v1.0 org=Ni",
+                "Target description": "(1 of 1) PTHR12565//PTHR12565:SF90 - STEROL REGULATORY ELEMENT-BINDING PROTEIN // TRANSCRIPTION FACTOR BHLH137 (LOC_Os05g01256) BEST:AT2G42300",
+                "Score": "4",
+                "Coordinates": "85-105",
+                "Strand": "+",
+                "Target sequence": "UUGGAAACCGACAAAACCGGU",
+                "Base pairing": ":::::::::::&nbsp:::::::.&nbsp",
+                "amiRNA sequence": "AACCUUUGGCUCUUUUGGCUU"
+            }
+        ]
+    }
+}
