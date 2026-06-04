@@ -21,6 +21,7 @@ jobs:
       - name: Copy binary
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin/linux
+          cd fasta36/src
           cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/linux/
 
       - uses: actions/upload-artifact@v4
@@ -45,6 +46,7 @@ jobs:
       - name: Copy binary
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin/mac_x86_64
+          cd fasta36/src
           cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/mac_x86_64/
 
       - uses: actions/upload-artifact@v4
@@ -69,6 +71,7 @@ jobs:
       - name: Copy binary
         run: |
           mkdir -p $GITHUB_WORKSPACE/bin/mac_arm64
+          cd fasta36/src
           cp ../bin/ssearch36 $GITHUB_WORKSPACE/bin/mac_arm64/
 
       - uses: actions/upload-artifact@v4
