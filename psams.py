@@ -81,10 +81,16 @@ def main():
     config = load_config(CONFIG_FILE)
     conn, mRNA_fa = connect_database(config, species)
 
-    # Check if transcript inputs are valid (if that ID is in the DB)
-    transcripts_list = get_transcripts(mRNA_fa)
-    accession_list = accessions.split(',')
-    check_accessions(accession_list, transcripts_list)
+    if fasta:
+        # FASTA input: derive the naming list from the sequence IDs in the
+        # (first) FASTA file, no database lookup needed.
+        first_fasta = fasta.split(":")[0]
+        accession_list = list(build_fg_index_fasta(convert_fasta_to_string(first_fasta)).keys())
+    else:
+        # Check if transcript inputs are valid (if that ID is in the DB)
+        transcripts_list = get_transcripts(mRNA_fa)
+        accession_list = accessions.split(',')
+        check_accessions(accession_list, transcripts_list)
 
     # create outputr folder and check if outputs already exist
     output_folder = output_path / f"{'_'.join(accession_list)}_psams_output"

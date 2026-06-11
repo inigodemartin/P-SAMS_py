@@ -2,9 +2,10 @@ import configparser
 from pprint import pprint
 import json
 import sys
+import shutil
 import subprocess
 import time
-import threading 
+import threading
 import sqlite3
 from pathlib import Path
 
@@ -229,13 +230,19 @@ def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_e
         minutes = (elapsed % 3600) // 60
         seconds = elapsed % 60
 
-        sys.stdout.write(
-            f"\rRunning P-SAMS for {','.join(accession_list)} | "
+        line = (
+            f"Running P-SAMS for {','.join(accession_list)} | "
             f"{hours:02d}:{minutes:02d}:{seconds:02d} | "
             f"Optimal sites found: {optimal_ref[0]} | "
             f"Suboptimal sites found: {suboptimal_ref[0]} | "
             f"Potential target sites: {potential_target_n} | "
         )
+
+        # Truncate to terminal width and clear the rest of the line, so a
+        # long line never wraps (which would turn each update into a new
+        # line on screen instead of overwriting the current one).
+        width = shutil.get_terminal_size((80, 20)).columns
+        sys.stdout.write("\r" + line[:width - 1] + "\033[K")
         sys.stdout.flush()
 
         time.sleep(1)

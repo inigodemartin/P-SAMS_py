@@ -26,4 +26,7 @@ def parse_args():
     if args.accessions and not args.species:
         parser.error("A species name was not provided!")
 
+    if args.fasta and not args.species and not args.noofftarget:
+        parser.error("Off-target prediction with -f requires -s/--species (or use -n/--noofftarget to disable it).")
+
     return args
