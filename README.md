@@ -1,24 +1,24 @@
 # P-SAMS_py
 
-Versión en Python de **P-SAMS** (Plant Small RNA Maker Suite): herramienta para
-diseñar **amiRNA** (artificial microRNA) y **syn-tasiRNA**, prediciendo además
-posibles dianas y off-targets mediante **TargetFinder**.
+Python version of **P-SAMS** (Plant Small RNA Maker Suite): a tool for
+designing **amiRNA** (artificial microRNA) and **syn-tasiRNA**, also predicting
+possible targets and off-targets via **TargetFinder**.
 
-## Requisitos
+## Requirements
 
-- Python 3.9+ (probado con 3.12)
-- [Biopython](https://biopython.org/) (solo necesario para construir bases de datos)
-- Perl 5 (necesario para ejecutar `TargetFinder/targetfinder.pl`)
-- `samtools` disponible en el `PATH` (se usa `samtools faidx`)
+- Python 3.9+ (tested with 3.12)
+- [Biopython](https://biopython.org/) (only needed to build databases)
+- Perl 5 (needed to run `TargetFinder/targetfinder.pl`)
+- `samtools` available on the `PATH` (`samtools faidx` is used)
 
-Los binarios de `ssearch36` (Linux, macOS arm64/x86_64) ya están incluidos en
-`TargetFinder/` y deberían tener permisos de ejecución. Si no es así:
+The `ssearch36` binaries (Linux, macOS arm64/x86_64) are already included in
+`TargetFinder/` and should have execute permissions. If not:
 
 ```bash
 chmod +x TargetFinder/ssearch36_* TargetFinder/targetfinder.pl
 ```
 
-## Instalación
+## Installation
 
 ```bash
 git clone https://github.com/inigodemartin/P-SAMS_py.git
@@ -26,26 +26,26 @@ cd P-SAMS_py
 pip install biopython
 ```
 
-No hace falta ningún paso de "build" adicional: `psams.py` y `create_db.py` se
-ejecutan directamente con `python3`.
+No additional "build" step is required: `psams.py` and `create_db.py` are run
+directly with `python3`.
 
 ---
 
-## 1. Construir la base de datos de una especie
+## 1. Building a species database
 
-Antes de poder analizar genes de una especie con `-a/--accessions` hace falta
-generar su base de datos de k-mers (usada para predecir off-targets) y registrarla
-en `psams.conf`.
+Before you can analyze genes of a species with `-a/--accessions`, you need to
+generate its k-mer database (used to predict off-targets) and register it in
+`psams.conf`.
 
-### Ficheros de entrada
+### Input files
 
-Necesitas los ficheros típicos de **Phytozome** para tu especie:
+You need the typical **Phytozome** files for your species:
 
-- Un FASTA de transcritos (mRNA), p. ej. `Nicotiana_benthamiana.transcript.fa`
-- Un fichero de anotación `*.annotation_info.txt` (formato Phytozome, 16 columnas
-  separadas por tabulador)
+- A transcript (mRNA) FASTA, e.g. `Nicotiana_benthamiana.transcript.fa`
+- An annotation file `*.annotation_info.txt` (Phytozome format, 16
+  tab-separated columns)
 
-### Comando
+### Command
 
 ```bash
 python3 create_db.py \
@@ -56,100 +56,100 @@ python3 create_db.py \
     -k 15
 ```
 
-Argumentos:
+Arguments:
 
-| Flag | Descripción |
+| Flag | Description |
 |------|-------------|
-| `-f, --fasta`        | FASTA de transcritos (formato Phytozome) |
-| `-d, --descriptions` | Fichero de anotación (`annotation_info.txt`) |
-| `-s, --species`      | Nombre/código de la especie (se usará luego con `-s` en `psams.py`) |
-| `-v, --version`      | Versión del transcriptoma (solo para nombrar los ficheros generados) |
-| `-k, --ksize`        | Tamaño de k-mer para la base de datos de off-targets. **Debe ser 15** (coincide con la semilla `SEED` usada por `psams.py`) |
-| `-l, --lowmem`       | Opcional. Construye la base de datos directamente, más lento pero usando mucha menos RAM |
+| `-f, --fasta`        | Transcript FASTA (Phytozome format) |
+| `-d, --descriptions` | Annotation file (`annotation_info.txt`) |
+| `-s, --species`      | Species name/code (used later with `-s` in `psams.py`) |
+| `-v, --version`      | Transcriptome version (only used to name the generated files) |
+| `-k, --ksize`        | K-mer size for the off-target database. **Must be 15** (matches the `SEED` used by `psams.py`) |
+| `-l, --lowmem`       | Optional. Builds the database directly, slower but using much less RAM |
 
-Este paso puede tardar bastante (recorre todo el transcriptoma generando k-mers).
+This step can take a while (it iterates over the whole transcriptome generating k-mers).
 
-### Qué genera
+### What it generates
 
-- `db/<especie>_<version>_prueba.db`: base de datos SQLite con las tablas `kmers`
-  y `annotation`.
-- Ficheros intermedios formateados junto al FASTA de entrada
-  (`<especie>.<version>.transcripts.fasta`, `<especie>.<version>.annotation.txt`)
-  y su índice `.fai`.
-- Una nueva entrada en `psams.conf` (en la raíz del proyecto) con el formato:
+- `db/<species>_<version>_prueba.db`: SQLite database with the `kmers` and
+  `annotation` tables.
+- Intermediate formatted files alongside the input FASTA
+  (`<species>.<version>.transcripts.fasta`, `<species>.<version>.annotation.txt`)
+  and its `.fai` index.
+- A new entry in `psams.conf` (in the project root) with the format:
 
 ```ini
 [Nicotiana_benthamiana]
-mRNA=/ruta/absoluta/a/Nicotiana_benthamiana.transcript.fa
-sql=/ruta/absoluta/al/proyecto/db/Nicotiana_benthamiana_v1.0_prueba.db
+mRNA=/absolute/path/to/Nicotiana_benthamiana.transcript.fa
+sql=/absolute/path/to/project/db/Nicotiana_benthamiana_v1.0_prueba.db
 ```
 
-`psams.conf` no está versionado (está en `.gitignore`); cada instalación tiene el
-suyo con las especies que haya construido.
+`psams.conf` is not version-controlled (it's in `.gitignore`); each
+installation has its own with the species it has built.
 
 ---
 
-## 2. Ejecutar un análisis
+## 2. Running an analysis
 
-Una vez la especie está registrada en `psams.conf`, se puede analizar un gen por
-su accession:
+Once the species is registered in `psams.conf`, you can analyze a gene by its
+accession:
 
 ```bash
 python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -u
 ```
 
-### Flags principales
+### Main flags
 
-| Flag | Descripción |
+| Flag | Description |
 |------|-------------|
-| `-a, --accessions`   | Accession(es) del gen, separados por comas. Requiere `-s` |
-| `-f, --fasta`        | Alternativa a `-a`: fichero FASTA con la(s) secuencia(s) a analizar |
-| `-s, --species`      | Especie tal y como aparece en `psams.conf`. Requerido si se usa `-a`, o si se usa `-f` y se quiere predicción de off-targets |
-| `-o, --output_path`  | Carpeta donde se crean los resultados (por defecto, el directorio actual) |
-| `-c, --construct`    | `amiRNA` (por defecto) o `syntasiRNA` |
-| `-t, --foldback`     | `eudicot` (por defecto) o `monocot` |
-| `-n, --noofftarget`  | Desactiva la predicción de off-targets con TargetFinder |
-| `-u, --unlimit`      | No limitar a 3 resultados óptimos: recorre todos los candidatos posibles (más lento) |
+| `-a, --accessions`   | Gene accession(s), comma-separated. Requires `-s` |
+| `-f, --fasta`        | Alternative to `-a`: FASTA file with the sequence(s) to analyze |
+| `-s, --species`      | Species as it appears in `psams.conf`. Required if using `-a`, or if using `-f` and off-target prediction is wanted |
+| `-o, --output_path`  | Folder where results are created (defaults to the current directory) |
+| `-c, --construct`    | `amiRNA` (default) or `syntasiRNA` |
+| `-t, --foldback`     | `eudicot` (default) or `monocot` |
+| `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
+| `-u, --unlimit`      | Don't limit to 3 optimal results: go through all possible candidates (slower) |
 
-Para `syntasiRNA`, se pueden definir varios grupos de genes/secuencias separando
-los grupos con `:`, p. ej. `-a gen1,gen2:gen3,gen4`.
+For `syntasiRNA`, you can define multiple groups of genes/sequences by
+separating the groups with `:`, e.g. `-a gen1,gen2:gen3,gen4`.
 
-### Resultados generados
+### Generated results
 
 ```
 runs/Nbe01g01610/Nbe01g01610.7_psams_output/
-├── Nbe01g01610.7_optimal_results.tsv      # amiRNAs óptimos (sin off-targets)
-├── Nbe01g01610.7_suboptimal_results.tsv   # amiRNAs subóptimos (con off-targets)
-├── Nbe01g01610.7_psams.json               # resultado final combinado
+├── Nbe01g01610.7_optimal_results.tsv      # optimal amiRNAs (no off-targets)
+├── Nbe01g01610.7_suboptimal_results.tsv   # suboptimal amiRNAs (with off-targets)
+├── Nbe01g01610.7_psams.json               # final combined result
 └── tf_results/
-    ├── site_0001_TargetFinder_result.json # salida de TargetFinder por candidato
+    ├── site_0001_TargetFinder_result.json # TargetFinder output per candidate
     └── ...
 ```
 
-Si `-o` ya contiene resultados completos para esos accessions, el script lo detecta
-y termina sin volver a ejecutar el análisis.
+If `-o` already contains complete results for those accessions, the script
+detects this and exits without re-running the analysis.
 
 ---
 
-## 3. Prueba rápida (sin base de datos)
+## 3. Quick test (without a database)
 
-Para comprobar que la instalación funciona sin necesidad de construir ninguna base
-de datos, puedes pasar tu propia secuencia con `-f` y desactivar la predicción de
-off-targets con `-n` (este modo no usa Perl, samtools ni `psams.conf`).
+To check that the installation works without building any database, you can
+pass your own sequence with `-f` and disable off-target prediction with `-n`
+(this mode doesn't use Perl, samtools, or `psams.conf`).
 
-Crea un fichero `example.fasta`:
+Create a file `example.fasta`:
 
 ```fasta
 >my_transcript
 ATGGCGGATTCAGAGAAGCCGGTTACCGGAAGCTTGAGCTCGGATCCACTAGTAACGGCCGCCAGTGTG
 ```
 
-Y ejecútalo:
+And run it:
 
 ```bash
 python3 psams.py -f example.fasta -n -o runs/quick_test
 ```
 
-Esto generará `runs/quick_test/my_transcript_psams_output/` con hasta 3 diseños
-de amiRNA óptimos (guide, star, oligos para clonación) calculados directamente
-sobre la secuencia de entrada, sin comprobar off-targets.
+This will generate `runs/quick_test/my_transcript_psams_output/` with up to 3
+optimal amiRNA designs (guide, star, cloning oligos) computed directly from the
+input sequence, without checking off-targets.
