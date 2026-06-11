@@ -22,7 +22,7 @@ MIN_LENGTH = 9
 
 
 
-def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta):
+def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs=1):
 
     #################################
     # Identify putative targe sites #
@@ -42,7 +42,7 @@ def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRN
     ######################################
     opt, subopt = serial_jobs(
     target_count, construct, transcript_dict,
-    site_scores, TARGETFINDER, mRNA_fa, conn, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta)
+    site_scores, TARGETFINDER, mRNA_fa, conn, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta, jobs)
 
 
     ##################################
@@ -66,6 +66,7 @@ def main():
     foldback = args.foldback
     construct = args.construct
     unlimit = args.unlimit
+    jobs = args.jobs
     noofftarget = args.noofftarget
     output_path = Path(args.output_path)
 
@@ -117,8 +118,8 @@ def main():
             accession_list = accessions.split(',')
             transcript_dict = build_fg_index(accession_list, conn, species, mRNA_fa)
 
-        opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta)
-        
+        opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs)
+
 
         final_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
         amirna_json(opt_count, subopt_count, opt_results, subopt_results, final_output)
@@ -136,7 +137,7 @@ def main():
             for g in range(count):
                 fasta_str = convert_fasta_to_string(fasta_groups[g])
                 transcript_dict = build_fg_index_fasta(fasta_str)
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta)
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,
@@ -151,7 +152,7 @@ def main():
             for g in range(count):
                 accession_list = accession_groups[g].split(',')
                 transcript_dict = build_fg_index(accession_list, conn, species, mRNA_fa)
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta)
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,
@@ -159,7 +160,7 @@ def main():
                 "sub_r": subopt_results,
                 }
 
-        final_output = output_folder / f"{'_'.join(accession_list)}_psams.json"        
+        final_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
         syntasirna_json(count, groups, final_output)
         
         print("Finished running P-SMAS successfully!")

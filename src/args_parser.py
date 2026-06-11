@@ -14,6 +14,7 @@ def parse_args():
     parser.add_argument("-c", "--construct",default="amiRNA",choices=["amiRNA", "syntasiRNA"],help="Construct type. Default = amiRNA.")
     parser.add_argument("-n", "--noofftarget",action="store_true",help="Run without predicting off-target transcripts.")
     parser.add_argument("-u", "--unlimit",action="store_true",help="Unlimited results (slow).")
+    parser.add_argument("-j", "--jobs",type=int,default=1,help="Number of TargetFinder jobs to run in parallel. Default = 1 (serial).")
     parser.add_argument("-p", "--phytozome_fasta", help="Genome assembly fasta")
     parser.add_argument("-d", "--descriptions", help="Annotation description file")
     parser.add_argument("-v", "--version", help="Genome version")
@@ -28,5 +29,8 @@ def parse_args():
 
     if args.fasta and not args.species and not args.noofftarget:
         parser.error("Off-target prediction with -f requires -s/--species (or use -n/--noofftarget to disable it).")
+
+    if args.jobs < 1:
+        parser.error("-j/--jobs must be at least 1.")
 
     return args

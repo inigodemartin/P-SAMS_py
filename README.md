@@ -110,6 +110,7 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-t, --foldback`     | `eudicot` (default) or `monocot` |
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
 | `-u, --unlimit`      | Don't limit to 3 optimal results: go through all possible candidates (slower) |
+| `-j, --jobs`         | Number of TargetFinder jobs to run in parallel. Default = 1 (serial) |
 
 For `syntasiRNA`, you can define multiple groups of genes/sequences by
 separating the groups with `:`, e.g. `-a gen1,gen2:gen3,gen4`.

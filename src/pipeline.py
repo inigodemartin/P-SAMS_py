@@ -4,6 +4,7 @@ import json
 import time
 import threading
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 def get_tsites(ids: dict, seed: int, bg=False, conn=None, debug=False) -> list:
     """
@@ -308,7 +309,22 @@ def score_sites(gsites: list, min_site_count: int, seed: int, fb: str, debug: bo
 
 
 
-def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False):
+def _run_targetfinder(targetfinder, guide, mRNA_fa, query_name):
+    """
+    Run TargetFinder for a single guide and return its stdout as a list of lines.
+    """
+    cmd = [
+        targetfinder,
+        "-s", guide,
+        "-d", mRNA_fa,
+        "-q", query_name,
+        "-p", "json"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.stdout.splitlines()
+
+
+def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1):
     """
     Run serial jobs for amiRNA evaluation.
 
@@ -342,6 +358,9 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
     unlimit : bool
         If True, do not limit the number of optimal results.
 
+    jobs : int
+        Number of TargetFinder calls to run in parallel. Default = 1 (serial).
+
     Returns
     -------
     tuple
@@ -367,23 +386,57 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
         subopt = []
         count = 0
 
+        n_sites = len(site_scores)
+        jobs = max(1, jobs)
 
-        for site in site_scores:
+        # ------------------------------------------------------------
+        # When jobs > 1, run TargetFinder for several candidates ahead
+        # of time in a thread pool (subprocess calls release the GIL),
+        # while still consuming results in order. Each prefetched call
+        # uses a placeholder query name (since the final "{construct}N"
+        # name depends on how many optimal sites have been found so
+        # far, which is only known once results are processed in
+        # order); the placeholder is swapped for the real name once
+        # the result is consumed.
+        # ------------------------------------------------------------
+        executor = None
+        pending = {}
+
+        if bg and jobs > 1:
+            executor = ThreadPoolExecutor(max_workers=jobs)
+
+            def _submit(i):
+                placeholder = f"{construct}_job{i}"
+                pending[i] = (
+                    placeholder,
+                    executor.submit(_run_targetfinder, targetfinder, site_scores[i]['guide'], mRNA_fa, placeholder)
+                )
+
+            for i in range(min(jobs, n_sites)):
+                _submit(i)
+
+        next_submit = jobs
+
+        for idx, site in enumerate(site_scores):
 
             count += 1
             site['name'] = f"{construct}{optimal_ref[0]}"
 
             if bg:
-                
-                cmd = [
-                    targetfinder,
-                    "-s", site['guide'],
-                    "-d", mRNA_fa,
-                    "-q", site['name'],
-                    "-p", "json"
-                ]
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                tf_results = result.stdout.splitlines()
+
+                if executor:
+                    placeholder, future = pending.pop(idx)
+                    tf_results = future.result()
+
+                    # Keep the pipeline full: queue the next candidate as
+                    # soon as a slot frees up.
+                    if next_submit < n_sites:
+                        _submit(next_submit)
+                        next_submit += 1
+
+                    tf_results = [line.replace(placeholder, site['name']) for line in tf_results]
+                else:
+                    tf_results = _run_targetfinder(targetfinder, site['guide'], mRNA_fa, site['name'])
 
                 # TargetFinder prints "No results for <query>" (not JSON) when the
                 # designed guide doesn't align even to its own target above the
@@ -521,6 +574,9 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
 
             if optimal_ref[0] == 3 and not unlimit:
                 break
+
+        if executor:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         stop_event.set()
         thread.join()
