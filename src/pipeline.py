@@ -385,6 +385,12 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 tf_results = result.stdout.splitlines()
 
+                # TargetFinder prints "No results for <query>" (not JSON) when the
+                # designed guide doesn't align even to its own target above the
+                # score cutoff. Such candidates are unusable, skip them.
+                if not tf_results or tf_results[0].strip().startswith("No results for"):
+                    continue
+
                 off_targets, on_targets, json_data, offtarget_list = off_target_check(
                     site, tf_results, conn
                 )
