@@ -117,6 +117,55 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
 | `-u, --unlimit`      | Don't limit to 3 optimal results: go through all possible candidates (slower) |
 | `-j, --jobs`         | Number of TargetFinder jobs to run in parallel. Default = 1 (serial) |
+| `-V, --vector`       | Cloning vector for oligo design (see below). Adds vector-specific cloning oligos to the output |
+| `-T, --target-site`  | 22-nt miRNA target site sequence. Only required with `--vector pMDC32B-B/c` |
+
+### Cloning vectors (`-V`)
+
+When `-V` is specified, the cloning oligos in the output JSON are computed using
+the selected vector's architecture. The available vectors depend on the construct
+type:
+
+**amiRNA** (`-c amiRNA`):
+
+| Vector | Overhang |
+|--------|----------|
+| `pMDC32B-AtMIR390a-B/c` | TGTA / AATG |
+| `pMDC32B-OsMIR390-B/c` | CTTG / CATG |
+| `pMDC32B-BS-AtMIR390a-B/c` | TGTA / AATG |
+| `pMDC32B-BS-AtMIR390a-A18G-B/c` | TGTG / AATG |
+
+**syn-tasiRNA** (`-c syntasiRNA`):
+
+| Vector | Overhang | Notes |
+|--------|----------|-------|
+| `pMDC32B-B/c` | TGTA / AATG | Requires `-T` (22-nt miRNA target site) |
+| `pMDC32B-AtTAS1c-B/c` | ATTA / GTTC | |
+| `pMDC32B-AtTAS1c-D2-B/c` | TTTA / CCGA | |
+| `pMDC32B-AtmiR173aTS-B/c` | TTTA / CCGA | |
+| `pMDC32B-NbmiR482aTS-B/c` | TTTA / CCGA | |
+| `pMDC32B-SlmiR482bTS-B/c` | TTTA / CCGA | |
+
+**Example — amiRNA with a specific vector:**
+
+```bash
+python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana \
+    -o runs/Nbe01g01610 -V "pMDC32B-AtMIR390a-B/c"
+```
+
+The `_psams.json` output will include a top-level `"vector"` key and
+vector-specific `"Forward Oligo"` / `"Reverse Oligo"` per candidate.
+
+**Example — syn-tasiRNA with target site:**
+
+```bash
+python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana \
+    -c syntasiRNA -o runs/Nbe01g01610 \
+    -V "pMDC32B-B/c" -T AAGCTTATCGATACCGTCGACC
+```
+
+The `_psams.json` output will include `"cloning_oligos"` with the final
+forward and reverse oligos ready to order.
 
 For `syntasiRNA`, you can define multiple groups of genes/sequences by
 separating the groups with `:`, e.g. `-a gen1,gen2:gen3,gen4`.

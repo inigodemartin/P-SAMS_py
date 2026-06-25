@@ -556,16 +556,15 @@ tuple
     return opt_count, subopt_count, opt_results, subopt_results
 
 
-def syntasirna_json(group_count, groups, output_file):
+def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None):
     """
     Build syntasiRNA JSON output from pipeline results.
 
     Args:
         group_count (int): number of groups
         groups (dict): pipeline result structure
-
-    Returns:
-        str: JSON formatted string
+        vector (str, optional): cloning vector name
+        cloning_oligos (dict, optional): {"forward": ..., "reverse": ...}
     """
 
     blocks = []
@@ -635,11 +634,16 @@ def syntasirna_json(group_count, groups, output_file):
         blocks.append(block)
         set_id += 1
 
-        with open(output_file, "w") as out:
+    output = {"blocks": blocks}
+    if vector:
+        output["vector"] = vector
+    if cloning_oligos:
+        output["cloning_oligos"] = cloning_oligos
 
-            json.dump({"blocks": blocks},out,indent=2)
+    with open(output_file, "w") as out:
+        json.dump(output, out, indent=2)
 
-def amirna_json(opt_count, sub_count, opt, sub, output_file):
+def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None):
     """
     Builds the JSON output for amiRNA results.
 
@@ -648,11 +652,11 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file):
         sub_count (int): number of suboptimal results
         opt (dict): dictionary of optimal results
         sub (dict): dictionary of suboptimal results
-
-    Returns:
-        str: JSON-formatted string
+        vector (str, optional): cloning vector name
     """
     output = {"optimal": {}, "suboptimal": {}}
+    if vector:
+        output["vector"] = vector
     result_count = 0
 
     # Optimal results

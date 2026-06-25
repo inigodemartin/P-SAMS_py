@@ -6,6 +6,7 @@ from src.args_parser import parse_args
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
 from src.add_species import create_kmer_db
+from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos
 
 import os
 
@@ -69,6 +70,8 @@ def main():
     jobs = args.jobs
     noofftarget = args.noofftarget
     output_path = Path(args.output_path)
+    vector = args.vector
+    target_site = args.target_site
 
     if noofftarget:
         offtarget = False
@@ -120,9 +123,15 @@ def main():
 
         opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs)
 
+        if vector:
+            for results in [opt_results, subopt_results]:
+                for res in results.values():
+                    fwd, rev = make_amirna_oligos(res['guide'], res['star'], vector)
+                    res['oligo1'] = fwd
+                    res['oligo2'] = rev
 
         final_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
-        amirna_json(opt_count, subopt_count, opt_results, subopt_results, final_output)
+        amirna_json(opt_count, subopt_count, opt_results, subopt_results, final_output, vector=vector)
         print("Finished running P-SMAS successfully!")
 
     elif construct == "syntasiRNA":
@@ -160,9 +169,22 @@ def main():
                 "sub_r": subopt_results,
                 }
 
+        cloning_oligos = None
+        if vector:
+            syn_guides = []
+            for g in range(count):
+                group = groups[g]
+                if group["opt"] > 0:
+                    syn_guides.append(group["opt_r"][1]["guide"])
+                elif group["sub"] > 0:
+                    syn_guides.append(group["sub_r"][1]["guide"])
+            if syn_guides:
+                fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
+                cloning_oligos = {"forward": fwd, "reverse": rev}
+
         final_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
-        syntasirna_json(count, groups, final_output)
-        
+        syntasirna_json(count, groups, final_output, vector=vector, cloning_oligos=cloning_oligos)
+
         print("Finished running P-SMAS successfully!")
 
 
