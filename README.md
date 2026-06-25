@@ -6,10 +6,9 @@ possible targets and off-targets via **TargetFinder**.
 
 ## Requirements
 
-- Python 3.9+ (tested with 3.12)
-- [Biopython](https://biopython.org/) (only needed to build databases)
-- Perl 5 (needed to run `TargetFinder/targetfinder.pl`)
-- `samtools` available on the `PATH` (`samtools faidx` is used)
+- [Conda](https://docs.conda.io/) (Miniconda or Anaconda)
+- Python 3.9+ (tested with 3.12), [Biopython](https://biopython.org/), Perl 5
+  and `samtools` are all installed through the conda environment (see below)
 
 The `ssearch36` binaries (Linux, macOS arm64/x86_64) are already included in
 `TargetFinder/` and should have execute permissions. If not:
@@ -23,11 +22,18 @@ chmod +x TargetFinder/ssearch36_* TargetFinder/targetfinder.pl
 ```bash
 git clone https://github.com/inigodemartin/P-SAMS_py.git
 cd P-SAMS_py
-pip install biopython
+conda env create -f environment.yml
+conda activate p-sams-py
 ```
 
 No additional "build" step is required: `psams.py` and `create_db.py` are run
-directly with `python3`.
+directly with `python3` once the environment is activated.
+
+To update an already-created environment after `environment.yml` changes:
+
+```bash
+conda env update -f environment.yml --prune
+```
 
 ---
 

@@ -1,0 +1,9 @@
+name: p-sams-py
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - biopython
+  - perl
+  - samtools
