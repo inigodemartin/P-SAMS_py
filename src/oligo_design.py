@@ -43,3 +43,32 @@ def make_syntasirna_oligos(syn_guides: list, vector: str, target_site: str = Non
     else:
         body = "".join(syn_guides)
     return _make_oligos(fwd_prefix, rev_prefix, body)
+
+
+def select_vector(construct: str) -> str:
+    """Interactively prompt the user to pick a cloning vector for the given construct type."""
+    vectors = list(AMIRNA_VECTORS if construct == "amiRNA" else SYNTASIRNA_VECTORS)
+
+    print("\nAvailable cloning vectors:")
+    for i, name in enumerate(vectors, start=1):
+        print(f"  {i}. {name}")
+
+    while True:
+        choice = input(f"Select a vector [1-{len(vectors)}]: ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(vectors):
+            return vectors[int(choice) - 1]
+        print(f"Invalid selection '{choice}'. Please enter a number between 1 and {len(vectors)}.")
+
+
+def prompt_target_site() -> str:
+    """Interactively prompt the user for the 22-nt miRNA target site sequence."""
+    while True:
+        seq = input("Enter the 22-nt miRNA target site sequence: ").strip().upper().replace("U", "T")
+        if len(seq) == 22 and set(seq) <= set("ACGT"):
+            return seq
+        print("Invalid sequence: must be a 22-nt DNA sequence (A, C, G, T only).")
+
+
+def vector_filename_suffix(vector: str) -> str:
+    """Return a filesystem-safe suffix for a vector name (e.g. 'pMDC32B-B/c' -> 'pMDC32B-Bc')."""
+    return vector.replace("/", "")

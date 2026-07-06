@@ -6,7 +6,7 @@ from src.args_parser import parse_args
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
 from src.add_species import create_kmer_db
-from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos
+from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, select_vector, prompt_target_site, vector_filename_suffix
 
 import os
 
@@ -70,8 +70,13 @@ def main():
     jobs = args.jobs
     noofftarget = args.noofftarget
     output_path = Path(args.output_path)
-    vector = args.vector
     target_site = args.target_site
+
+    vector = None
+    if args.vector:
+        vector = select_vector(construct)
+        if vector == "pMDC32B-B/c" and not target_site:
+            target_site = prompt_target_site()
 
     if noofftarget:
         offtarget = False
@@ -130,7 +135,8 @@ def main():
                     res['oligo1'] = fwd
                     res['oligo2'] = rev
 
-        final_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
+        vector_suffix = f"_{vector_filename_suffix(vector)}" if vector else ""
+        final_output = output_folder / f"{'_'.join(accession_list)}{vector_suffix}_psams.json"
         amirna_json(opt_count, subopt_count, opt_results, subopt_results, final_output, vector=vector)
         print("Finished running P-SMAS successfully!")
 
@@ -182,7 +188,8 @@ def main():
                 fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
                 cloning_oligos = {"forward": fwd, "reverse": rev}
 
-        final_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
+        vector_suffix = f"_{vector_filename_suffix(vector)}" if vector else ""
+        final_output = output_folder / f"{'_'.join(accession_list)}{vector_suffix}_psams.json"
         syntasirna_json(count, groups, final_output, vector=vector, cloning_oligos=cloning_oligos)
 
         print("Finished running P-SMAS successfully!")

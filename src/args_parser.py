@@ -1,10 +1,4 @@
 import argparse
-from src.oligo_design import AMIRNA_VECTORS, SYNTASIRNA_VECTORS
-
-_ALL_VECTORS = list(AMIRNA_VECTORS) + list(SYNTASIRNA_VECTORS)
-
-_AMIRNA_VECTOR_HELP = "\n  ".join(AMIRNA_VECTORS)
-_SYNTASIRNA_VECTOR_HELP = "\n  ".join(SYNTASIRNA_VECTORS)
 
 
 def parse_args():
@@ -23,19 +17,12 @@ def parse_args():
     parser.add_argument("-u", "--unlimit",action="store_true",help="Unlimited results (slow).")
     parser.add_argument("-j", "--jobs",type=int,default=1,help="Number of TargetFinder jobs to run in parallel. Default = 1 (serial).")
     parser.add_argument("-V", "--vector",
-        choices=_ALL_VECTORS,
-        metavar="VECTOR",
-        help=(
-            "Cloning vector for oligo design. Generates vector-specific cloning oligos in the output.\n"
-            "amiRNA vectors:\n"
-            f"  {_AMIRNA_VECTOR_HELP}\n"
-            "syn-tasiRNA vectors:\n"
-            f"  {_SYNTASIRNA_VECTOR_HELP}"
-        ))
+        action="store_true",
+        help="Prompt to interactively select a cloning vector for oligo design. Generates vector-specific cloning oligos in the output.")
     parser.add_argument("-T", "--target-site",
         dest="target_site",
         metavar="SEQ",
-        help="22-nt miRNA target site sequence. Required when --vector pMDC32B-B/c is used with --construct syntasiRNA.")
+        help="22-nt miRNA target site sequence. Required when the pMDC32B-B/c vector is selected with --construct syntasiRNA. If not provided and needed, it will be requested interactively.")
     parser.add_argument("-p", "--phytozome_fasta", help="Genome assembly fasta")
     parser.add_argument("-d", "--descriptions", help="Annotation description file")
     parser.add_argument("-v", "--version", help="Genome version")
@@ -53,20 +40,6 @@ def parse_args():
 
     if args.jobs < 1:
         parser.error("-j/--jobs must be at least 1.")
-
-    if args.vector:
-        if args.construct == "amiRNA" and args.vector not in AMIRNA_VECTORS:
-            parser.error(
-                f"Vector '{args.vector}' is a syn-tasiRNA vector and cannot be used with --construct amiRNA.\n"
-                f"Available amiRNA vectors: {', '.join(AMIRNA_VECTORS)}"
-            )
-        if args.construct == "syntasiRNA" and args.vector not in SYNTASIRNA_VECTORS:
-            parser.error(
-                f"Vector '{args.vector}' is an amiRNA vector and cannot be used with --construct syntasiRNA.\n"
-                f"Available syn-tasiRNA vectors: {', '.join(SYNTASIRNA_VECTORS)}"
-            )
-        if args.vector == "pMDC32B-B/c" and not args.target_site:
-            parser.error("--target-site is required when using --vector pMDC32B-B/c.")
 
     if args.target_site:
         ts = args.target_site.strip().upper().replace("U", "T")

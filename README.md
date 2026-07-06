@@ -117,14 +117,16 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
 | `-u, --unlimit`      | Don't limit to 3 optimal results: go through all possible candidates (slower) |
 | `-j, --jobs`         | Number of TargetFinder jobs to run in parallel. Default = 1 (serial) |
-| `-V, --vector`       | Cloning vector for oligo design (see below). Adds vector-specific cloning oligos to the output |
-| `-T, --target-site`  | 22-nt miRNA target site sequence. Only required with `--vector pMDC32B-B/c` |
+| `-V, --vector`       | Prompts an interactive menu to pick a cloning vector (see below). Adds vector-specific cloning oligos to the output |
+| `-T, --target-site`  | 22-nt miRNA target site sequence. Only required when the `pMDC32B-B/c` vector is selected. If omitted and needed, it is requested interactively |
 
 ### Cloning vectors (`-V`)
 
-When `-V` is specified, the cloning oligos in the output JSON are computed using
-the selected vector's architecture. The available vectors depend on the construct
-type:
+When `-V` is passed, the script prompts an interactive menu listing the vectors
+available for the chosen `--construct`, so you just pick a number instead of
+typing the exact vector name. The cloning oligos in the output JSON are then
+computed using the selected vector's architecture. The available vectors
+depend on the construct type:
 
 **amiRNA** (`-c amiRNA`):
 
@@ -146,26 +148,40 @@ type:
 | `pMDC32B-NbmiR482aTS-B/c` | TTTA / CCGA | |
 | `pMDC32B-SlmiR482bTS-B/c` | TTTA / CCGA | |
 
-**Example — amiRNA with a specific vector:**
+**Example — amiRNA with a cloning vector:**
 
 ```bash
 python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana \
-    -o runs/Nbe01g01610 -V "pMDC32B-AtMIR390a-B/c"
+    -o runs/Nbe01g01610 -V
 ```
 
-The `_psams.json` output will include a top-level `"vector"` key and
-vector-specific `"Forward Oligo"` / `"Reverse Oligo"` per candidate.
+```
+Available cloning vectors:
+  1. pMDC32B-AtMIR390a-B/c
+  2. pMDC32B-OsMIR390-B/c
+  3. pMDC32B-BS-AtMIR390a-B/c
+  4. pMDC32B-BS-AtMIR390a-A18G-B/c
+Select a vector [1-4]: 1
+```
+
+The output filename gets the chosen vector appended (e.g.
+`Nbe01g01610.7_pMDC32B-AtMIR390a-Bc_psams.json`), and the JSON itself
+includes a top-level `"vector"` key plus vector-specific
+`"Forward Oligo"` / `"Reverse Oligo"` per candidate.
 
 **Example — syn-tasiRNA with target site:**
 
 ```bash
 python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana \
-    -c syntasiRNA -o runs/Nbe01g01610 \
-    -V "pMDC32B-B/c" -T AAGCTTATCGATACCGTCGACC
+    -c syntasiRNA -o runs/Nbe01g01610 -V
 ```
 
-The `_psams.json` output will include `"cloning_oligos"` with the final
-forward and reverse oligos ready to order.
+If the vector you pick from the menu is `pMDC32B-B/c` and `-T` wasn't
+given on the command line, you'll be prompted for the 22-nt target site
+sequence interactively. The `_psams.json` output filename and content
+follow the same convention: vector name in the filename, plus a
+`"cloning_oligos"` key with the final forward and reverse oligos ready
+to order.
 
 For `syntasiRNA`, you can define multiple groups of genes/sequences by
 separating the groups with `:`, e.g. `-a gen1,gen2:gen3,gen4`.
