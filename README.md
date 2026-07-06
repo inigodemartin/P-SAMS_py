@@ -112,13 +112,35 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-f, --fasta`        | Alternative to `-a`: FASTA file with the sequence(s) to analyze |
 | `-s, --species`      | Species as it appears in `psams.conf`. Required if using `-a`, or if using `-f` and off-target prediction is wanted |
 | `-o, --output_path`  | Folder where results are created (defaults to the current directory) |
-| `-c, --construct`    | `amiRNA` (default) or `syntasiRNA` |
+| `-c, --construct`    | `amiRNA` or `syntasiRNA`. If omitted, you're prompted to choose interactively |
 | `-t, --foldback`     | `eudicot` (default) or `monocot` |
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
 | `-u, --unlimit`      | Don't limit to 3 optimal results: go through all possible candidates (slower) |
 | `-j, --jobs`         | Number of TargetFinder jobs to run in parallel. Default = 1 (serial) |
 | `-V, --vector`       | Prompts an interactive menu to pick a cloning vector (see below). Adds vector-specific cloning oligos to the output |
 | `-T, --target-site`  | 22-nt miRNA target site sequence. Only required when the `pMDC32B-B/c` vector is selected. If omitted and needed, it is requested interactively |
+
+If you omit `-c`, you'll be prompted to choose the construct type before the
+run starts, and if `-V` is also used, the vector menu is shown right after
+(filtered by whichever construct you just picked):
+
+```
+$ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -V
+
+Select construct type:
+  1. amiRNA
+  2. syntasiRNA
+Select construct [1-2]: 2
+
+Available cloning vectors:
+  1. pMDC32B-B/c
+  2. pMDC32B-AtTAS1c-B/c
+  3. pMDC32B-AtTAS1c-D2-B/c
+  4. pMDC32B-AtmiR173aTS-B/c
+  5. pMDC32B-NbmiR482aTS-B/c
+  6. pMDC32B-SlmiR482bTS-B/c
+Select a vector [1-6]: 1
+```
 
 ### Cloning vectors (`-V`)
 

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions
-from src.args_parser import parse_args
+from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
 from src.add_species import create_kmer_db
@@ -65,7 +65,7 @@ def main():
     accessions = args.accessions
     species = args.species
     foldback = args.foldback
-    construct = args.construct
+    construct = args.construct or select_construct()
     unlimit = args.unlimit
     jobs = args.jobs
     noofftarget = args.noofftarget
