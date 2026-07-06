@@ -9,6 +9,8 @@ import threading
 import sqlite3
 from pathlib import Path
 
+from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix
+
 ########################################################
 #                   CONFIG LOADER                      #
 ########################################################
@@ -287,15 +289,77 @@ def add_species_to_config(config_file, species, sql_db, mrna_path):
 
     print(f"Added species '{species}' to config")
 
-def check_output(results_file, accession_list, output_folder):
-    if results_file.exists():
-        with open(results_file, "r") as f:
-            line_count = sum(1 for _ in f)
-        
-        if line_count == 4:
+def apply_vector_to_amirna_output(data: dict, vector: str) -> None:
+    """Recompute Forward/Reverse Oligo fields of a cached amiRNA output for a new vector, in place."""
+    for section in ("optimal", "suboptimal"):
+        for entry in data.get(section, {}).values():
+            fwd, rev = make_amirna_oligos(entry["amiRNA"], entry["amiRNA*"], vector)
+            entry["Forward Oligo"] = fwd
+            entry["Reverse Oligo"] = rev
+    data["vector"] = vector
 
-            print(f"P-SAMS already executed for {'_'.join(accession_list)}.\nResults in {output_folder.resolve()}.\nExiting script.")
-            sys.exit(0)
+
+def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str) -> None:
+    """Recompute cloning_oligos of a cached syn-tasiRNA output for a new vector, in place."""
+    syn_guides = []
+    for block in data.get("blocks", []):
+        entries = block.get("optimal") or block.get("suboptimal") or {}
+        first_key = next(iter(entries), None)
+        if first_key:
+            syn_guides.append(entries[first_key]["syn-tasiRNA"])
+
+    data["vector"] = vector
+    if syn_guides:
+        fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
+        data["cloning_oligos"] = {"forward": fwd, "reverse": rev}
+
+
+def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, target_site=None, construct=None):
+    """
+    If a previous full run's results already exist for this input, avoid
+    re-running the (slow) TargetFinder pipeline.
+
+    Without --vector, this keeps the original behaviour: report and exit,
+    since re-running would produce the exact same output. With --vector,
+    the cached canonical output (base_output) is reused and only the
+    vector-specific cloning oligos are (re)computed into a new,
+    vector-named output file.
+    """
+    if not results_file.exists():
+        return
+
+    with open(results_file, "r") as f:
+        line_count = sum(1 for _ in f)
+
+    if line_count != 4:
+        return
+
+    if not vector:
+        print(f"P-SAMS already executed for {'_'.join(accession_list)}.\nResults in {output_folder.resolve()}.\nExiting script.")
+        sys.exit(0)
+
+    if not base_output.exists():
+        print(f"P-SAMS already executed for {'_'.join(accession_list)}, but its cached results file ({base_output.name}) is missing. Re-running.")
+        return
+
+    with open(base_output, "r") as f:
+        data = json.load(f)
+
+    if construct == "amiRNA":
+        apply_vector_to_amirna_output(data, vector)
+    else:
+        apply_vector_to_syntasirna_output(data, vector, target_site)
+
+    vector_output = output_folder / f"{'_'.join(accession_list)}_{vector_filename_suffix(vector)}_psams.json"
+    with open(vector_output, "w") as out:
+        json.dump(data, out, indent=2)
+
+    print(
+        f"P-SAMS already executed for {'_'.join(accession_list)}.\n"
+        f"Reusing cached results and generating cloning oligos for vector '{vector}'.\n"
+        f"Output: {vector_output.resolve()}\nExiting script."
+    )
+    sys.exit(0)
 
 
 

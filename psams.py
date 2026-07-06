@@ -102,14 +102,20 @@ def main():
         check_accessions(accession_list, transcripts_list)
 
     # create outputr folder and check if outputs already exist
-    output_folder = output_path / f"{'_'.join(accession_list)}_psams_output"
+    accession_key = '_'.join(accession_list)
+    output_folder = output_path / f"{accession_key}_psams_output"
     tf_results = output_folder / "tf_results"
     os.makedirs(output_folder, exist_ok=True)
     os.makedirs(tf_results, exist_ok=True)
 
+    # base_output is the canonical, vector-agnostic result cache: it is
+    # always (re)written on a full run and reused by check_output below to
+    # skip the expensive pipeline when only the cloning vector changes.
+    base_output = output_folder / f"{accession_key}_psams.json"
+
     # check if results for given input are already performed
-    results_file = output_folder / f"{'_'.join(accession_list)}_optimal_results.tsv"
-    check_output(results_file, accession_list, output_folder)
+    results_file = output_folder / f"{accession_key}_optimal_results.tsv"
+    check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct)
 
     subopt_name, opt_name = create_outputs(accession_list, output_folder)
 
@@ -128,16 +134,17 @@ def main():
 
         opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs)
 
+        amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output)
+
         if vector:
             for results in [opt_results, subopt_results]:
                 for res in results.values():
                     fwd, rev = make_amirna_oligos(res['guide'], res['star'], vector)
                     res['oligo1'] = fwd
                     res['oligo2'] = rev
+            vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(vector)}_psams.json"
+            amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector)
 
-        vector_suffix = f"_{vector_filename_suffix(vector)}" if vector else ""
-        final_output = output_folder / f"{'_'.join(accession_list)}{vector_suffix}_psams.json"
-        amirna_json(opt_count, subopt_count, opt_results, subopt_results, final_output, vector=vector)
         print("Finished running P-SMAS successfully!")
 
     elif construct == "syntasiRNA":
@@ -175,7 +182,8 @@ def main():
                 "sub_r": subopt_results,
                 }
 
-        cloning_oligos = None
+        syntasirna_json(count, groups, base_output)
+
         if vector:
             syn_guides = []
             for g in range(count):
@@ -184,13 +192,12 @@ def main():
                     syn_guides.append(group["opt_r"][1]["guide"])
                 elif group["sub"] > 0:
                     syn_guides.append(group["sub_r"][1]["guide"])
+            cloning_oligos = None
             if syn_guides:
                 fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
                 cloning_oligos = {"forward": fwd, "reverse": rev}
-
-        vector_suffix = f"_{vector_filename_suffix(vector)}" if vector else ""
-        final_output = output_folder / f"{'_'.join(accession_list)}{vector_suffix}_psams.json"
-        syntasirna_json(count, groups, final_output, vector=vector, cloning_oligos=cloning_oligos)
+            vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(vector)}_psams.json"
+            syntasirna_json(count, groups, vector_output, vector=vector, cloning_oligos=cloning_oligos)
 
         print("Finished running P-SMAS successfully!")
 

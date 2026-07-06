@@ -186,20 +186,36 @@ to order.
 For `syntasiRNA`, you can define multiple groups of genes/sequences by
 separating the groups with `:`, e.g. `-a gen1,gen2:gen3,gen4`.
 
+**Re-running with a different vector:** every run writes a vector-agnostic
+`{accession}_psams.json` cache alongside the vector-specific file. If you
+run the same input again with `-V` and a full run's results already exist,
+P-SAMS reuses that cache instead of re-running TargetFinder, and only
+(re)computes the cloning oligos for the newly selected vector:
+
+```
+P-SAMS already executed for Nbe01g01610.7.
+Reusing cached results and generating cloning oligos for vector 'pMDC32B-OsMIR390-B/c'.
+Output: runs/Nbe01g01610/Nbe01g01610.7_psams_output/Nbe01g01610.7_pMDC32B-OsMIR390-Bc_psams.json
+Exiting script.
+```
+
 ### Generated results
 
 ```
 runs/Nbe01g01610/Nbe01g01610.7_psams_output/
-├── Nbe01g01610.7_optimal_results.tsv      # optimal amiRNAs (no off-targets)
-├── Nbe01g01610.7_suboptimal_results.tsv   # suboptimal amiRNAs (with off-targets)
-├── Nbe01g01610.7_psams.json               # final combined result
+├── Nbe01g01610.7_optimal_results.tsv               # optimal amiRNAs (no off-targets)
+├── Nbe01g01610.7_suboptimal_results.tsv            # suboptimal amiRNAs (with off-targets)
+├── Nbe01g01610.7_psams.json                        # vector-agnostic cache / final result
+├── Nbe01g01610.7_pMDC32B-OsMIR390-Bc_psams.json    # only created when -V is used
 └── tf_results/
     ├── site_0001_TargetFinder_result.json # TargetFinder output per candidate
     └── ...
 ```
 
 If `-o` already contains complete results for those accessions, the script
-detects this and exits without re-running the analysis.
+detects this and exits without re-running the analysis — unless `-V` is
+used, in which case it reuses the cached `_psams.json` to generate the
+vector-specific file without redoing the (slow) TargetFinder search.
 
 ---
 
