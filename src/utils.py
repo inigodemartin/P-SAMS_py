@@ -241,12 +241,7 @@ def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_e
                 f"Potential target sites: {potential_target_n} | "
             )
         else:
-            line = (
-                f"Running P-SAMS for {','.join(accession_list)} in no-offtarget mode | "
-                f"{hours:02d}:{minutes:02d}:{seconds:02d} | "
-                f"Sites found: {optimal_ref[0]} | "
-                f"Potential target sites: {potential_target_n} | "
-            )
+            line = f"Running P-SAMS for {','.join(accession_list)} in no-offtarget mode"
 
         # Truncate to terminal width and clear the rest of the line, so a
         # long line never wraps (which would turn each update into a new
