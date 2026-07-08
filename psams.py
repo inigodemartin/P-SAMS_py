@@ -106,9 +106,13 @@ def main():
     accession_key = '_'.join(accession_list)
     folder_suffix = "_no_offtarget" if noofftarget else ""
     output_folder = output_path / f"{accession_key}_psams_output{folder_suffix}"
-    tf_results = output_folder / "tf_results"
     os.makedirs(output_folder, exist_ok=True)
-    os.makedirs(tf_results, exist_ok=True)
+
+    # TargetFinder only runs when off-target checking is enabled, so its
+    # per-site result folder is pointless (and never written to) in -n mode.
+    tf_results = output_folder / "tf_results"
+    if not noofftarget:
+        os.makedirs(tf_results, exist_ok=True)
 
     # base_output is the canonical, vector-agnostic result cache: it is
     # always (re)written on a full run and reused by check_output below to
@@ -162,7 +166,7 @@ def main():
             # No vector selected: the cache is the only result, surface it.
             shutil.copy2(base_output, visible_output)
 
-        print("Finished running P-SMAS successfully!")
+        print("Finished running P-SAMS successfully!")
 
     elif construct == "syntasiRNA":
         
