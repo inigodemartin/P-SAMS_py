@@ -218,7 +218,7 @@ def oligo_designer(guide: str, fb_type: str):
 
 
 
-def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_event, potential_target_n):
+def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_event, potential_target_n, offtarget=True):
     """
     Live status line updated every second.
     Runs in background thread.
@@ -232,13 +232,21 @@ def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_e
         minutes = (elapsed % 3600) // 60
         seconds = elapsed % 60
 
-        line = (
-            f"Running P-SAMS for {','.join(accession_list)} | "
-            f"{hours:02d}:{minutes:02d}:{seconds:02d} | "
-            f"Optimal sites found: {optimal_ref[0]} | "
-            f"Suboptimal sites found: {suboptimal_ref[0]} | "
-            f"Potential target sites: {potential_target_n} | "
-        )
+        if offtarget:
+            line = (
+                f"Running P-SAMS for {','.join(accession_list)} | "
+                f"{hours:02d}:{minutes:02d}:{seconds:02d} | "
+                f"Optimal sites found: {optimal_ref[0]} | "
+                f"Suboptimal sites found: {suboptimal_ref[0]} | "
+                f"Potential target sites: {potential_target_n} | "
+            )
+        else:
+            line = (
+                f"Running P-SAMS for {','.join(accession_list)} in no-offtarget mode | "
+                f"{hours:02d}:{minutes:02d}:{seconds:02d} | "
+                f"Sites found: {optimal_ref[0]} | "
+                f"Potential target sites: {potential_target_n} | "
+            )
 
         # Truncate to terminal width and clear the rest of the line, so a
         # long line never wraps (which would turn each update into a new
@@ -291,7 +299,7 @@ def add_species_to_config(config_file, species, sql_db, mrna_path):
 
 def apply_vector_to_amirna_output(data: dict, vector: str) -> None:
     """Recompute Forward/Reverse Oligo fields of a cached amiRNA output for a new vector, in place."""
-    for section in ("optimal", "suboptimal"):
+    for section in ("optimal", "suboptimal", "results"):
         for entry in data.get(section, {}).values():
             fwd, rev = make_amirna_oligos(entry["amiRNA"], entry["amiRNA*"], vector)
             entry["Forward Oligo"] = fwd
@@ -303,7 +311,7 @@ def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str)
     """Recompute cloning_oligos of a cached syn-tasiRNA output for a new vector, in place."""
     syn_guides = []
     for block in data.get("blocks", []):
-        entries = block.get("optimal") or block.get("suboptimal") or {}
+        entries = block.get("optimal") or block.get("results") or block.get("suboptimal") or {}
         first_key = next(iter(entries), None)
         if first_key:
             syn_guides.append(entries[first_key]["syn-tasiRNA"])
@@ -335,6 +343,9 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
         return
 
     if not vector:
+        visible_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
+        if base_output and base_output.exists() and not visible_output.exists():
+            shutil.copy2(base_output, visible_output)
         print(f"P-SAMS already executed for {'_'.join(accession_list)}.\nResults in {output_folder.resolve()}.\nExiting script.")
         sys.exit(0)
 
@@ -548,7 +559,7 @@ def parse_list(sep, flat_list):
 
     return final_list
 
-def create_opt_subopt(subopt, opt, construct, debug=False):
+def create_opt_subopt(subopt, opt, construct, no_offtarget=False, debug=False):
     """
 Format and organize optimal and suboptimal target sites into structured output dictionaries, updating their labels in the TargetFinder results.
 
@@ -561,6 +572,9 @@ opt : list of dict
     Optimal sites
 construct : str
     Construct name used for labeling results
+no_offtarget : bool, optional
+    If True, off-target checking was disabled: nothing was actually
+    classified as optimal, so results are labeled generically instead
 debug : bool, optional
     If True, prints debugging information
 
@@ -586,11 +600,12 @@ tuple
         pprint(opt)
 
     # Process optimal results
+    opt_label = "Result" if no_offtarget else "Optimal Result"
     opt_count = 0
     for i, site in enumerate(opt, start=1):
         opt_count += 1
         # Replace construct name in TF JSON
-        site['tf'] = site['tf'].replace(f"{construct}{i}", f"{construct} Optimal Result {i}")
+        site['tf'] = site['tf'].replace(f"{construct}{i}", f"{construct} {opt_label} {i}")
 
         opt_results[i] = {
             'guide': site['guide'],
@@ -620,7 +635,7 @@ tuple
     return opt_count, subopt_count, opt_results, subopt_results
 
 
-def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None):
+def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None, no_offtarget=False):
     """
     Build syntasiRNA JSON output from pipeline results.
 
@@ -629,6 +644,9 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
         groups (dict): pipeline result structure
         vector (str, optional): cloning vector name
         cloning_oligos (dict, optional): {"forward": ..., "reverse": ...}
+        no_offtarget (bool, optional): if True, off-target checking was
+            disabled, so results are labeled generically (not optimal/
+            suboptimal) and the suboptimal section is omitted
     """
 
     blocks = []
@@ -637,14 +655,15 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
     for g in range(group_count):
         group = groups[g]
 
-        block = {
-            "name": f"Gene set {set_id}",
-            "optimal": {},
-            "suboptimal": {}
-        }
+        section_key = "results" if no_offtarget else "optimal"
+        entry_label = "result" if no_offtarget else "optimal"
+
+        block = {"name": f"Gene set {set_id}", section_key: {}}
+        if not no_offtarget:
+            block["suboptimal"] = {}
 
         # -------------------------
-        # OPTIMAL
+        # OPTIMAL / RESULTS
         # -------------------------
         for o in range(1, group.get("opt", 0) + 1):
             entry = group["opt_r"][o]
@@ -664,36 +683,37 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
             except Exception:
                 hits = []
 
-            block["optimal"][f"optimal {set_id}.{o}"] = {
+            block[section_key][f"{entry_label} {set_id}.{o}"] = {
                 "syn-tasiRNA": entry.get("guide", ""),
                 "TargetFinder": hits
             }
 
         # -------------------------
-        # SUBOPTIMAL
+        # SUBOPTIMAL (only when off-target checking is enabled)
         # -------------------------
-        for s in range(1, group.get("sub", 0) + 1):
-            entry = group["sub_r"][s]
+        if not no_offtarget:
+            for s in range(1, group.get("sub", 0) + 1):
+                entry = group["sub_r"][s]
 
-            hits = []
-
-            tf_raw = entry.get("tf", "")
-
-            try:
-                tf_json = json.loads(tf_raw) if isinstance(tf_raw, str) else tf_raw
-
-                if isinstance(tf_json, dict):
-                    first_key = next(iter(tf_json), None)
-                    if first_key:
-                        hits = tf_json[first_key].get("hits", [])
-
-            except Exception:
                 hits = []
 
-            block["suboptimal"][f"suboptimal {set_id}.{s}"] = {
-                "syn-tasiRNA": entry.get("guide", ""),
-                "TargetFinder": hits
-            }
+                tf_raw = entry.get("tf", "")
+
+                try:
+                    tf_json = json.loads(tf_raw) if isinstance(tf_raw, str) else tf_raw
+
+                    if isinstance(tf_json, dict):
+                        first_key = next(iter(tf_json), None)
+                        if first_key:
+                            hits = tf_json[first_key].get("hits", [])
+
+                except Exception:
+                    hits = []
+
+                block["suboptimal"][f"suboptimal {set_id}.{s}"] = {
+                    "syn-tasiRNA": entry.get("guide", ""),
+                    "TargetFinder": hits
+                }
 
         blocks.append(block)
         set_id += 1
@@ -707,7 +727,7 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
     with open(output_file, "w") as out:
         json.dump(output, out, indent=2)
 
-def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None):
+def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_offtarget=False):
     """
     Builds the JSON output for amiRNA results.
 
@@ -717,16 +737,24 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None):
         opt (dict): dictionary of optimal results
         sub (dict): dictionary of suboptimal results
         vector (str, optional): cloning vector name
+        no_offtarget (bool, optional): if True, off-target checking was
+            disabled, so results are labeled generically (not optimal/
+            suboptimal) and the suboptimal section is omitted
     """
-    output = {"optimal": {}, "suboptimal": {}}
+    section_key = "results" if no_offtarget else "optimal"
+    entry_label = "amiRNA Result" if no_offtarget else "amiRNA Optimal Result"
+
+    output = {section_key: {}}
+    if not no_offtarget:
+        output["suboptimal"] = {}
     if vector:
         output["vector"] = vector
     result_count = 0
 
-    # Optimal results
+    # Optimal / generic results
     for i in range(1, opt_count + 1):
         result_count += 1
-        output["optimal"][f"amiRNA Optimal Result {result_count}"] = {
+        output[section_key][f"{entry_label} {result_count}"] = {
             "amiRNA": opt[i]["guide"],
             "amiRNA*": opt[i]["star"],
             "Forward Oligo": opt[i]["oligo1"],
@@ -734,22 +762,23 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None):
             "TargetFinder": json.loads(opt[i]["tf"])
         }
 
-    # Suboptimal results
-    result_count = 0
-    for i in range(1, sub_count + 1):
-        try:
-            tf_json = json.loads(sub[i]["tf"])
-        except (json.JSONDecodeError, TypeError):
-            tf_json = 'No result'  # o {}
-        result_count += 1
-        output["suboptimal"][f"amiRNA Suboptimal Result {result_count}"] = {
-            "amiRNA": sub[i]["guide"],
-            "amiRNA*": sub[i]["star"],
-            "Forward Oligo": sub[i]["oligo1"],
-            "Reverse Oligo": sub[i]["oligo2"],
-           "TargetFinder": tf_json
-        }
-        
+    # Suboptimal results (only when off-target checking is enabled)
+    if not no_offtarget:
+        result_count = 0
+        for i in range(1, sub_count + 1):
+            try:
+                tf_json = json.loads(sub[i]["tf"])
+            except (json.JSONDecodeError, TypeError):
+                tf_json = 'No result'  # o {}
+            result_count += 1
+            output["suboptimal"][f"amiRNA Suboptimal Result {result_count}"] = {
+                "amiRNA": sub[i]["guide"],
+                "amiRNA*": sub[i]["star"],
+                "Forward Oligo": sub[i]["oligo1"],
+                "Reverse Oligo": sub[i]["oligo2"],
+               "TargetFinder": tf_json
+            }
+
     with open(output_file, "w") as out:
         json.dump(output, out, indent=2)
 

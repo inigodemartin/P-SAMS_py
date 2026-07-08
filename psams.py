@@ -9,6 +9,7 @@ from src.add_species import create_kmer_db
 from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, select_vector, prompt_target_site, vector_filename_suffix
 
 import os
+import shutil
 
 #############
 # CONSTANTS #
@@ -49,7 +50,7 @@ def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRN
     ##################################
     # no se como llamar a esta parte #
     ##################################
-    opt_count, subopt_count, opt_results, subopt_results = create_opt_subopt(subopt, opt, construct)
+    opt_count, subopt_count, opt_results, subopt_results = create_opt_subopt(subopt, opt, construct, no_offtarget=not offtarget)
 
     return opt_count, subopt_count, opt_results, subopt_results
 
@@ -103,21 +104,34 @@ def main():
 
     # create outputr folder and check if outputs already exist
     accession_key = '_'.join(accession_list)
-    output_folder = output_path / f"{accession_key}_psams_output"
+    folder_suffix = "_no_offtarget" if noofftarget else ""
+    output_folder = output_path / f"{accession_key}_psams_output{folder_suffix}"
     tf_results = output_folder / "tf_results"
     os.makedirs(output_folder, exist_ok=True)
     os.makedirs(tf_results, exist_ok=True)
 
     # base_output is the canonical, vector-agnostic result cache: it is
     # always (re)written on a full run and reused by check_output below to
-    # skip the expensive pipeline when only the cloning vector changes.
-    base_output = output_folder / f"{accession_key}_psams.json"
+    # skip the expensive pipeline when only the cloning vector changes. It
+    # lives in a hidden .cache/ subfolder so it never shows up next to the
+    # vector-specific result and gets mistaken for a second, valid result.
+    cache_dir = output_folder / ".cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    base_output = cache_dir / f"{accession_key}_psams.json"
+    visible_output = output_folder / f"{accession_key}_psams.json"
 
     # check if results for given input are already performed
     results_file = output_folder / f"{accession_key}_optimal_results.tsv"
     check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct)
 
-    subopt_name, opt_name = create_outputs(accession_list, output_folder)
+    if noofftarget:
+        # No off-target checking means no optimal/suboptimal TSVs: nothing
+        # is actually being classified as optimal vs. suboptimal, so those
+        # files would only ever contain a header. Only the JSON is written.
+        subopt_name = f"{output_folder}/{accession_key}_suboptimal_results.tsv"
+        opt_name = f"{output_folder}/{accession_key}_optimal_results.tsv"
+    else:
+        subopt_name, opt_name = create_outputs(accession_list, output_folder)
 
     ##################################################################
     # Run the pipeline distinguishing between amiRNA and syntasiRNA  #
@@ -134,7 +148,7 @@ def main():
 
         opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs)
 
-        amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output)
+        amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget)
 
         if vector:
             for results in [opt_results, subopt_results]:
@@ -143,7 +157,10 @@ def main():
                     res['oligo1'] = fwd
                     res['oligo2'] = rev
             vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(vector)}_psams.json"
-            amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector)
+            amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget)
+        else:
+            # No vector selected: the cache is the only result, surface it.
+            shutil.copy2(base_output, visible_output)
 
         print("Finished running P-SMAS successfully!")
 
@@ -182,7 +199,7 @@ def main():
                 "sub_r": subopt_results,
                 }
 
-        syntasirna_json(count, groups, base_output)
+        syntasirna_json(count, groups, base_output, no_offtarget=noofftarget)
 
         if vector:
             syn_guides = []
@@ -197,7 +214,10 @@ def main():
                 fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
                 cloning_oligos = {"forward": fwd, "reverse": rev}
             vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(vector)}_psams.json"
-            syntasirna_json(count, groups, vector_output, vector=vector, cloning_oligos=cloning_oligos)
+            syntasirna_json(count, groups, vector_output, vector=vector, cloning_oligos=cloning_oligos, no_offtarget=noofftarget)
+        else:
+            # No vector selected: the cache is the only result, surface it.
+            shutil.copy2(base_output, visible_output)
 
         print("Finished running P-SMAS successfully!")
 

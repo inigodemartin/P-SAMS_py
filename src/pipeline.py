@@ -4,6 +4,7 @@ import json
 import time
 import threading
 import subprocess
+import contextlib
 from concurrent.futures import ThreadPoolExecutor
 
 def get_tsites(ids: dict, seed: int, bg=False, conn=None, debug=False) -> list:
@@ -366,7 +367,14 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
     tuple
         (opt, subopt)
     """
-    with open(subopt_name, 'a', buffering=1) as subopt_out, open(opt_name, 'a', buffering=1) as opt_out:
+    # In no-offtarget mode (bg=False), every candidate is treated as a plain
+    # "result" (see the bg-False branch below) — nothing is ever classified
+    # as optimal/suboptimal, so the TSV files are never written to. Skip
+    # creating them at all rather than leaving behind header-only files.
+    subopt_cm = open(subopt_name, 'a', buffering=1) if bg else contextlib.nullcontext(None)
+    opt_cm = open(opt_name, 'a', buffering=1) if bg else contextlib.nullcontext(None)
+
+    with subopt_cm as subopt_out, opt_cm as opt_out:
 
         start_time = time.time()
 
@@ -377,7 +385,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
 
         thread = threading.Thread(
             target=_status_loop,
-            args=(start_time, accession_list, optimal_ref, suboptimal_ref, stop_event, potential_target_n),
+            args=(start_time, accession_list, optimal_ref, suboptimal_ref, stop_event, potential_target_n, bg),
             daemon=True
         )
         thread.start()
