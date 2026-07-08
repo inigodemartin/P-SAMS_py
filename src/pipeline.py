@@ -325,7 +325,7 @@ def _run_targetfinder(targetfinder, guide, mRNA_fa, query_name):
     return result.stdout.splitlines()
 
 
-def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1):
+def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1, limit=3):
     """
     Run serial jobs for amiRNA evaluation.
 
@@ -358,6 +358,10 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
 
     unlimit : bool
         If True, do not limit the number of optimal results.
+
+    limit : int
+        Maximum number of optimal results to find before stopping.
+        Ignored when unlimit is True. Default = 3.
 
     jobs : int
         Number of TargetFinder calls to run in parallel. Default = 1 (serial).
@@ -580,7 +584,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                 opt.append(site)
                 optimal_ref[0] += 1
 
-            if optimal_ref[0] == 3 and not unlimit:
+            if optimal_ref[0] == limit and not unlimit:
                 break
 
         if executor:

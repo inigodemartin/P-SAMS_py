@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument("-c", "--construct",choices=["amiRNA", "syntasiRNA"],help="Construct type. If omitted, you'll be prompted to choose interactively.")
     parser.add_argument("-n", "--noofftarget",action="store_true",help="Run without predicting off-target transcripts.")
     parser.add_argument("-u", "--unlimit",action="store_true",help="Unlimited results (slow).")
+    parser.add_argument("-l", "--limit",type=int,default=3,help="Maximum number of optimal results to find before stopping. Default = 3. Ignored if -u/--unlimit is set.")
     parser.add_argument("-j", "--jobs",type=int,default=1,help="Number of TargetFinder jobs to run in parallel. Default = 1 (serial).")
     parser.add_argument("-V", "--vector",
         action="store_true",
@@ -55,6 +56,9 @@ def parse_args():
 
     if args.jobs < 1:
         parser.error("-j/--jobs must be at least 1.")
+
+    if args.limit < 1:
+        parser.error("-l/--limit must be at least 1.")
 
     if args.target_site:
         ts = args.target_site.strip().upper().replace("U", "T")
