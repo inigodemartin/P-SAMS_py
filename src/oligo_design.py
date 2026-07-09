@@ -89,3 +89,46 @@ def prompt_syn_order(site_index: dict) -> str:
         if choice:
             return choice
         print("Please enter at least one site.")
+
+
+def print_syn_vector_instructions(site_index: dict, output_folder, accession_key: str) -> None:
+    """
+    Print the optimal syn-tasiRNA sites found, the vectors available for
+    syntasiRNA, and a ready-to-copy clone_vector.py command.
+
+    Choosing sites/order/vector is printed as a separate follow-up command
+    instead of generated inline (or prompted for right here), so that:
+    - a run that just spent a long time on TargetFinder never blocks
+      waiting for interactive input afterward;
+    - the "find sites" step and the "clone into a vector" step stay two
+      clearly distinct commands, not the same one repeated with more flags.
+    """
+    print("\nOptimal syn-tasiRNA sites found:")
+    for label in sorted(site_index, key=lambda k: tuple(map(int, k.split('.')))):
+        print(f"  {label}\t{site_index[label]}")
+
+    vectors = list(SYNTASIRNA_VECTORS)
+    print("\nAvailable cloning vectors for syntasiRNA:")
+    for v in vectors:
+        print(f"  {v}")
+
+    by_gene_set = {}
+    for label in site_index:
+        gs, site = (int(x) for x in label.split('.'))
+        if gs not in by_gene_set or site < by_gene_set[gs][0]:
+            by_gene_set[gs] = (site, label)
+    example_order = ",".join(by_gene_set[gs][1] for gs in sorted(by_gene_set))
+
+    # Prefer a vector that doesn't need -T/--target-site for the example, so
+    # the printed command is runnable verbatim without an extra prompt.
+    example_vector = next(
+        (v for v, (_, _, ts_spacer) in SYNTASIRNA_VECTORS.items() if ts_spacer is None),
+        vectors[0],
+    )
+
+    print(
+        "\nTo generate the cloning oligos, edit the vector and site selection below\n"
+        "(copy them from the lists above) and run:\n\n"
+        f"  python3 clone_vector.py -o {output_folder} -V \"{example_vector}\" -O \"{example_order}\"\n\n"
+        "This reuses the sites already found here — it doesn't rerun TargetFinder."
+    )

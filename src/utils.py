@@ -9,7 +9,7 @@ import threading
 import sqlite3
 from pathlib import Path
 
-from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix, prompt_syn_order
+from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix, prompt_syn_order, print_syn_vector_instructions
 
 ########################################################
 #                   CONFIG LOADER                      #
@@ -444,7 +444,7 @@ def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str,
         data["cloning_oligos"] = {"forward": fwd, "reverse": rev}
 
 
-def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, target_site=None, construct=None, order=None, limit=3, unlimit=False):
+def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, construct=None, limit=3, unlimit=False, want_vector_info=False):
     """
     If a previous full run's results already exist for this input, avoid
     re-running the (slow) TargetFinder pipeline.
@@ -458,10 +458,14 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
     request just because it also happened to produce a 4-line TSV).
 
     Without --vector, this keeps the original behaviour: report and exit,
-    since re-running would produce the exact same output. With --vector,
-    the cached canonical output (base_output) is reused and only the
-    vector-specific cloning oligos are (re)computed into a new,
-    vector-named output file.
+    since re-running would produce the exact same output.
+
+    With --vector: for amiRNA, `vector` is the chosen vector name and the
+    cached canonical output (base_output) is reused to (re)compute the
+    vector-specific cloning oligos directly. For syntasiRNA, no vector is
+    chosen here at all (want_vector_info is just True/False) — instead the
+    already-known optimal sites and the clone_vector.py command to run next
+    are printed, same as at the end of a fresh syntasiRNA run.
     """
     if not results_file.exists():
         return
@@ -473,7 +477,7 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
     if unlimit or optimal_count < limit:
         return
 
-    if not vector:
+    if not vector and not want_vector_info:
         visible_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
         if base_output and base_output.exists() and not visible_output.exists():
             shutil.copy2(base_output, visible_output)
@@ -489,18 +493,23 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
 
     if construct == "amiRNA":
         apply_vector_to_amirna_output(data, vector)
-    else:
-        apply_vector_to_syntasirna_output(data, vector, target_site, order)
+        vector_output = output_folder / f"{'_'.join(accession_list)}_{vector_filename_suffix(vector)}_psams.json"
+        with open(vector_output, "w") as out:
+            json.dump(data, out, indent=2)
+        print(
+            f"P-SAMS already executed for {'_'.join(accession_list)}.\n"
+            f"Reusing cached results and generating cloning oligos for vector '{vector}'.\n"
+            f"Output: {vector_output.resolve()}\nExiting script."
+        )
+        sys.exit(0)
 
-    vector_output = output_folder / f"{'_'.join(accession_list)}_{vector_filename_suffix(vector)}_psams.json"
-    with open(vector_output, "w") as out:
-        json.dump(data, out, indent=2)
+    site_index = syn_cached_site_index(data.get("blocks", []))
+    if not site_index:
+        print(f"P-SAMS already executed for {'_'.join(accession_list)}, but no optimal syn-tasiRNA sites were found; nothing to clone.\nExiting script.")
+        sys.exit(0)
 
-    print(
-        f"P-SAMS already executed for {'_'.join(accession_list)}.\n"
-        f"Reusing cached results and generating cloning oligos for vector '{vector}'.\n"
-        f"Output: {vector_output.resolve()}\nExiting script."
-    )
+    print(f"P-SAMS already executed for {'_'.join(accession_list)}.")
+    print_syn_vector_instructions(site_index, output_folder, '_'.join(accession_list))
     sys.exit(0)
 
 

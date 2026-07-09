@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
-from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, parse_syn_order, load_resume_state
+from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
 from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
 from src.add_species import create_kmer_db
-from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, select_vector, prompt_target_site, vector_filename_suffix, prompt_syn_order
+from src.oligo_design import make_amirna_oligos, select_vector, vector_filename_suffix, print_syn_vector_instructions
 
 import os
 import shutil
@@ -73,13 +73,13 @@ def main():
     jobs = args.jobs
     noofftarget = args.noofftarget
     output_path = Path(args.output_path)
-    target_site = args.target_site
 
+    # For syntasiRNA, -V doesn't select a vector here at all: which sites to
+    # clone (and the vector) can only be chosen once the optimal sites are
+    # known, which happens in the separate clone_vector.py step below.
     vector = None
-    if args.vector:
+    if args.vector and construct == "amiRNA":
         vector = select_vector(construct)
-        if vector == "pMDC32B-B/c" and not target_site:
-            target_site = prompt_target_site()
 
     if noofftarget:
         offtarget = False
@@ -133,7 +133,7 @@ def main():
 
     # check if results for given input are already performed
     results_file = output_folder / f"{accession_key}_optimal_results.tsv"
-    check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct, order=args.order, limit=limit, unlimit=unlimit)
+    check_output(results_file, accession_list, output_folder, base_output, vector, construct, limit=limit, unlimit=unlimit, want_vector_info=bool(args.vector))
 
     # Resuming: a previous partial run (e.g. capped by a lower -l/--limit)
     # already wrote optimal_results.tsv. Reuse it instead of truncating it
@@ -234,32 +234,18 @@ def main():
 
         syntasirna_json(count, groups, base_output, no_offtarget=noofftarget)
 
-        if vector:
+        if args.vector:
+            # Choosing sites/order/vector always happens as a separate,
+            # later step (clone_vector.py) — never inline here — since it's
+            # a decision only the user can make and can only be made once
+            # these optimal sites are known, which is only now.
             site_index = syn_optimal_site_index(groups, count)
-            cloning_oligos = None
-            selected_sites = None
             if not site_index:
-                print("No optimal syn-tasiRNA sites were found for any gene set; skipping vector-specific oligo design.")
+                print("No optimal syn-tasiRNA sites were found for any gene set; nothing to clone.")
             else:
-                # -O/--order is only meaningful once the available sites are
-                # already known (i.e. reusing a completed run's cache, see
-                # check_output/apply_vector_to_syntasirna_output below) — the
-                # pipeline just ran, so the sites are only known now. Ignore
-                # -O here and always ask interactively.
-                if args.order:
-                    print("Note: -O/--order is ignored on a run that just computed results — the available "
-                          "sites weren't known beforehand. Prompting interactively; re-run with -V -O once "
-                          "you've seen these results to skip the prompt.")
-                order = prompt_syn_order(site_index)
-                syn_guides = parse_syn_order(order, site_index)
-                selected_sites = [t.strip() for t in order.split(',')]
-                fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
-                cloning_oligos = {"forward": fwd, "reverse": rev}
-            vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(vector)}_psams.json"
-            syntasirna_json(count, groups, vector_output, vector=vector, cloning_oligos=cloning_oligos, no_offtarget=noofftarget, selected_sites=selected_sites)
-        else:
-            # No vector selected: the cache is the only result, surface it.
-            shutil.copy2(base_output, visible_output)
+                print_syn_vector_instructions(site_index, output_folder, accession_key)
+
+        shutil.copy2(base_output, visible_output)
 
         print("Finished running P-SMAS successfully!")
 
