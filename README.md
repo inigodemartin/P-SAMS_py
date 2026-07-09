@@ -120,7 +120,7 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-j, --jobs`         | Number of TargetFinder jobs to run in parallel. Default = 1 (serial) |
 | `-V, --vector`       | Prompts an interactive menu to pick a cloning vector (see below). Adds vector-specific cloning oligos to the output |
 | `-T, --target-site`  | 22-nt miRNA target site sequence. Only required when the `pMDC32B-B/c` vector is selected. If omitted and needed, it is requested interactively |
-| `-O, --order`        | Only for `syntasiRNA` + `-V`. Ordered, comma-separated `geneset.site` selection of which optimal sites to clone (e.g. `1.1,3.2,2.1`). If omitted, you're prompted interactively once the optimal sites are found |
+| `-O, --order`        | Only for `syntasiRNA` + `-V`, and only effective when re-running against already-cached results (see below). Ordered, comma-separated `geneset.site` selection of which optimal sites to clone (e.g. `1.1,3.2,2.1`). Ignored (with a note printed) on a run that's still computing results — you're prompted interactively there instead, since the sites aren't known yet |
 
 If you omit `-c`, you'll be prompted to choose the construct type before the
 run starts, and if `-V` is also used, the vector menu is shown right after
@@ -221,8 +221,11 @@ optimal sites for every gene set have been found, each one is addressed as
 `geneset.site` (gene set 1's first optimal site is `1.1`, its second is
 `1.2`, gene set 3's second optimal site is `3.2`, etc. — the same labels
 used in the TSV's `Gene_set`/`Site_index` columns and the JSON's
-`"optimal 1.1"` keys). If `-O/--order` wasn't given on the command line,
-you're prompted for this list interactively:
+`"optimal 1.1"` keys). Since those labels only exist once the pipeline has
+found the optimal sites, a run that's actually computing results (fresh or
+resumed) always prompts for this list interactively — `-O/--order` is
+ignored there, even if given, because the sites it would refer to aren't
+known yet:
 
 ```
 Optimal syn-tasiRNA sites found:
@@ -238,8 +241,15 @@ The chosen sites are cloned into the vector in the order given, and recorded
 under `"selected_sites"` in the `_psams.json` output. You don't have to
 select exactly one site per gene set: a gene set can be left out, or have
 more than one of its sites included, if that's what the construct needs.
-Passing `-O "1.1,3.2,2.1"` skips the interactive prompt (useful for scripted
-or cluster runs).
+
+`-O/--order` only becomes useful on a *second* invocation, once you already
+know the labels — either from having seen the interactive prompt, or from
+inspecting a previous run's TSV/JSON. Run once (with or without `-V`), look
+at the results, then re-run with `-V -O "1.1,3.2,2.1"`: since the results
+are already cached, this reuses them instead of re-running TargetFinder
+(same mechanism as re-running with a different vector, below) and
+generates the cloning oligos non-interactively — handy for scripted or
+cluster workflows.
 
 **Re-running with a different vector:** every run writes a vector-agnostic
 `{accession}_psams.json` cache alongside the vector-specific file. If you

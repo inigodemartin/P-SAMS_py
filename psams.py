@@ -241,7 +241,16 @@ def main():
             if not site_index:
                 print("No optimal syn-tasiRNA sites were found for any gene set; skipping vector-specific oligo design.")
             else:
-                order = args.order or prompt_syn_order(site_index)
+                # -O/--order is only meaningful once the available sites are
+                # already known (i.e. reusing a completed run's cache, see
+                # check_output/apply_vector_to_syntasirna_output below) — the
+                # pipeline just ran, so the sites are only known now. Ignore
+                # -O here and always ask interactively.
+                if args.order:
+                    print("Note: -O/--order is ignored on a run that just computed results — the available "
+                          "sites weren't known beforehand. Prompting interactively; re-run with -V -O once "
+                          "you've seen these results to skip the prompt.")
+                order = prompt_syn_order(site_index)
                 syn_guides = parse_syn_order(order, site_index)
                 selected_sites = [t.strip() for t in order.split(',')]
                 fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
