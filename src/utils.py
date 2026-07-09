@@ -375,10 +375,18 @@ def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str,
         data["cloning_oligos"] = {"forward": fwd, "reverse": rev}
 
 
-def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, target_site=None, construct=None, order=None):
+def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, target_site=None, construct=None, order=None, limit=3, unlimit=False):
     """
     If a previous full run's results already exist for this input, avoid
     re-running the (slow) TargetFinder pipeline.
+
+    limit/unlimit describe the CURRENT invocation's request, not the
+    previous run's: a cached run is only considered "already satisfies
+    this request" if it already found at least `limit` optimal results.
+    If `unlimit` is requested now, a capped previous run can never be
+    trusted to be exhaustive, so the shortcut is skipped and the pipeline
+    re-runs (e.g. a prior `-l 3` run must not short-circuit a `-l 10`
+    request just because it also happened to produce a 4-line TSV).
 
     Without --vector, this keeps the original behaviour: report and exit,
     since re-running would produce the exact same output. With --vector,
@@ -392,7 +400,8 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
     with open(results_file, "r") as f:
         line_count = sum(1 for _ in f)
 
-    if line_count != 4:
+    optimal_count = line_count - 1
+    if unlimit or optimal_count < limit:
         return
 
     if not vector:

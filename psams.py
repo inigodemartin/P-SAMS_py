@@ -132,7 +132,7 @@ def main():
 
     # check if results for given input are already performed
     results_file = output_folder / f"{accession_key}_optimal_results.tsv"
-    check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct, order=args.order)
+    check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct, order=args.order, limit=limit, unlimit=unlimit)
 
     if noofftarget:
         # No off-target checking means no optimal/suboptimal TSVs: nothing
