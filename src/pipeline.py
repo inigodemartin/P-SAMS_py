@@ -325,7 +325,7 @@ def _run_targetfinder(targetfinder, guide, mRNA_fa, query_name):
     return result.stdout.splitlines()
 
 
-def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1, limit=3):
+def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1, limit=3, gene_set=None):
     """
     Run serial jobs for amiRNA evaluation.
 
@@ -363,6 +363,12 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
         Maximum number of optimal results to find before stopping.
         Ignored when unlimit is True. Default = 3.
 
+    gene_set : int, optional
+        1-indexed gene set number for syntasiRNA multi-gene-set runs. When
+        set, every TSV row is prefixed with a Gene_set column so rows from
+        different gene sets (which share the same TSV file) can be told
+        apart. None (default) for amiRNA, which has no gene sets.
+
     jobs : int
         Number of TargetFinder calls to run in parallel. Default = 1 (serial).
 
@@ -377,6 +383,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
     # creating them at all rather than leaving behind header-only files.
     subopt_cm = open(subopt_name, 'a', buffering=1) if bg else contextlib.nullcontext(None)
     opt_cm = open(opt_name, 'a', buffering=1) if bg else contextlib.nullcontext(None)
+    row_prefix = f"{gene_set}\t" if gene_set is not None else ""
 
     with subopt_cm as subopt_out, opt_cm as opt_out:
 
@@ -488,7 +495,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                         opt.append(site)
 
                         opt_out.write(
-                            f"{count}\t{site['guide']}\t{site['star']}\t"
+                            f"{row_prefix}{count}\t{site['guide']}\t{site['star']}\t"
                             f"{site['oligo1']}\t{site['oligo2']}\t"
                             f"{site['names']}\t{site['seqs']}\n"
                         )
@@ -512,7 +519,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                         })
 
                         subopt_out.write(
-                            f"{count}\t{site['offtarget_number']}\t{site['offtarget_list']}\t"
+                            f"{row_prefix}{count}\t{site['offtarget_number']}\t{site['offtarget_list']}\t"
                             f"{site['guide']}\t{site['star']}\t"
                             f"{site['oligo1']}\t{site['oligo2']}\t"
                             f"{site['names']}\t{site['seqs']}\n"
@@ -532,7 +539,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                         opt.append(site)
 
                         opt_out.write(
-                            f"{count}\t{site['guide']}\t{site['star']}\t"
+                            f"{row_prefix}{count}\t{site['guide']}\t{site['star']}\t"
                             f"{site['oligo1']}\t{site['oligo2']}\t"
                             f"{site['names']}\t{site['seqs']}\n"
                         )
@@ -550,7 +557,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                         })
 
                         subopt_out.write(
-                            f"{count}\t{site['offtarget_number']}\t{site['offtarget_list']}\t"
+                            f"{row_prefix}{count}\t{site['offtarget_number']}\t{site['offtarget_list']}\t"
                             f"{site['guide']}\t{site['star']}\t"
                             f"{site['oligo1']}\t{site['oligo2']}\t"
                             f"{site['names']}\t{site['seqs']}\n"

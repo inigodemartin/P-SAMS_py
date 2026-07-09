@@ -72,3 +72,20 @@ def prompt_target_site() -> str:
 def vector_filename_suffix(vector: str) -> str:
     """Return a filesystem-safe suffix for a vector name (e.g. 'pMDC32B-B/c' -> 'pMDC32B-Bc')."""
     return vector.replace("/", "")
+
+
+def prompt_syn_order(site_index: dict) -> str:
+    """
+    Interactively prompt the user to choose which optimal syn-tasiRNA sites
+    to clone, and in what order, addressing each by its 'geneset.site' label
+    (e.g. '1.1,3.2,2.1'). site_index maps those labels to guide sequences.
+    """
+    print("\nOptimal syn-tasiRNA sites found:")
+    for label in sorted(site_index, key=lambda k: tuple(map(int, k.split('.')))):
+        print(f"  {label}\t{site_index[label]}")
+
+    while True:
+        choice = input("Enter the sites to clone, in order (e.g. 1.1,3.2,2.1): ").strip()
+        if choice:
+            return choice
+        print("Please enter at least one site.")

@@ -9,7 +9,7 @@ import threading
 import sqlite3
 from pathlib import Path
 
-from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix
+from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix, prompt_syn_order
 
 ########################################################
 #                   CONFIG LOADER                      #
@@ -253,13 +253,21 @@ def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_e
         time.sleep(1)
 
 
-def create_outputs(accessions, output_folder):
+def create_outputs(accessions, output_folder, syntasirna=False):
     subopt_name = f"{output_folder}/{'_'.join(accessions)}_suboptimal_results.tsv"
     opt_name = f"{output_folder}/{'_'.join(accessions)}_optimal_results.tsv"
-    
+
     with open(subopt_name, 'w') as subopt, open(opt_name, 'w') as opt:
-        subopt_header = 'Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
-        opt_header = 'Site_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
+        if syntasirna:
+            # syntasiRNA runs may cover several gene sets writing into this
+            # same file (one call per gene set); Gene_set identifies which
+            # gene set a row belongs to, so results can be addressed as
+            # "geneset.site" (e.g. "1.1", "3.2") when choosing what to clone.
+            subopt_header = 'Gene_set\tSite_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
+            opt_header = 'Gene_set\tSite_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
+        else:
+            subopt_header = 'Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
+            opt_header = 'Site_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
         subopt.write(subopt_header)
         opt.write(opt_header)
 
@@ -302,22 +310,72 @@ def apply_vector_to_amirna_output(data: dict, vector: str) -> None:
     data["vector"] = vector
 
 
-def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str) -> None:
-    """Recompute cloning_oligos of a cached syn-tasiRNA output for a new vector, in place."""
-    syn_guides = []
-    for block in data.get("blocks", []):
-        entries = block.get("optimal") or block.get("results") or block.get("suboptimal") or {}
-        first_key = next(iter(entries), None)
-        if first_key:
-            syn_guides.append(entries[first_key]["syn-tasiRNA"])
+def syn_optimal_site_index(groups: dict, count: int) -> dict:
+    """
+    Build a {'geneset.site': guide_sequence} index of every optimal
+    syn-tasiRNA site found across gene sets in a fresh pipeline run, e.g.
+    {'1.1': 'ACGT...', '1.2': 'TTGC...', '2.1': 'GGCA...'}.
+    """
+    index = {}
+    for g in range(count):
+        group = groups[g]
+        for o in range(1, group.get("opt", 0) + 1):
+            index[f"{g + 1}.{o}"] = group["opt_r"][o]["guide"]
+    return index
 
+
+def syn_cached_site_index(blocks: list) -> dict:
+    """
+    Build the same {'geneset.site': guide_sequence} index as
+    syn_optimal_site_index, but from a cached syntasirna_json 'blocks' list
+    (keys there look like 'optimal 1.1' or 'result 1.1' — the label is the
+    part after the last space).
+    """
+    index = {}
+    for block in blocks:
+        entries = block.get("optimal") or block.get("results") or {}
+        for key, entry in entries.items():
+            label = key.rsplit(" ", 1)[-1]
+            index[label] = entry["syn-tasiRNA"]
+    return index
+
+
+def parse_syn_order(order: str, site_index: dict) -> list:
+    """
+    Parse a comma-separated, ordered 'geneset.site' selection (e.g.
+    '1.1,3.2,2.1') into the corresponding list of guide sequences, in that
+    order, validating every token against site_index.
+    """
+    guides = []
+    for token in order.split(','):
+        token = token.strip()
+        if token not in site_index:
+            available = ", ".join(
+                sorted(site_index, key=lambda k: tuple(map(int, k.split('.'))))
+            ) or "none"
+            sys.exit(f"Error: site '{token}' does not exist among the optimal results found. Available: {available}.")
+        guides.append(site_index[token])
+    return guides
+
+
+def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str, order: str = None) -> None:
+    """
+    Recompute cloning_oligos of a cached syn-tasiRNA output for a new
+    vector, in place, using an explicit user-chosen ordering of
+    'geneset.site' selections (order, or an interactive prompt if omitted)
+    instead of silently picking the first site of every gene set.
+    """
+    site_index = syn_cached_site_index(data.get("blocks", []))
     data["vector"] = vector
-    if syn_guides:
+    if site_index:
+        order = order or prompt_syn_order(site_index)
+        syn_guides = parse_syn_order(order, site_index)
+        data["selected_sites"] = [t.strip() for t in order.split(',')]
         fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
         data["cloning_oligos"] = {"forward": fwd, "reverse": rev}
 
 
-def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, target_site=None, construct=None):
+def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, target_site=None, construct=None, order=None):
     """
     If a previous full run's results already exist for this input, avoid
     re-running the (slow) TargetFinder pipeline.
@@ -354,7 +412,7 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
     if construct == "amiRNA":
         apply_vector_to_amirna_output(data, vector)
     else:
-        apply_vector_to_syntasirna_output(data, vector, target_site)
+        apply_vector_to_syntasirna_output(data, vector, target_site, order)
 
     vector_output = output_folder / f"{'_'.join(accession_list)}_{vector_filename_suffix(vector)}_psams.json"
     with open(vector_output, "w") as out:
@@ -630,7 +688,7 @@ tuple
     return opt_count, subopt_count, opt_results, subopt_results
 
 
-def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None, no_offtarget=False):
+def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None, no_offtarget=False, selected_sites=None):
     """
     Build syntasiRNA JSON output from pipeline results.
 
@@ -642,6 +700,8 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
         no_offtarget (bool, optional): if True, off-target checking was
             disabled, so results are labeled generically (not optimal/
             suboptimal) and the suboptimal section is omitted
+        selected_sites (list, optional): ordered 'geneset.site' labels chosen
+            for cloning_oligos (e.g. ['1.1', '3.2', '2.1'])
     """
 
     blocks = []
@@ -718,6 +778,8 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
         output["vector"] = vector
     if cloning_oligos:
         output["cloning_oligos"] = cloning_oligos
+    if selected_sites:
+        output["selected_sites"] = selected_sites
 
     with open(output_file, "w") as out:
         json.dump(output, out, indent=2)

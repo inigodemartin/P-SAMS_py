@@ -119,6 +119,7 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-j, --jobs`         | Number of TargetFinder jobs to run in parallel. Default = 1 (serial) |
 | `-V, --vector`       | Prompts an interactive menu to pick a cloning vector (see below). Adds vector-specific cloning oligos to the output |
 | `-T, --target-site`  | 22-nt miRNA target site sequence. Only required when the `pMDC32B-B/c` vector is selected. If omitted and needed, it is requested interactively |
+| `-O, --order`        | Only for `syntasiRNA` + `-V`. Ordered, comma-separated `geneset.site` selection of which optimal sites to clone (e.g. `1.1,3.2,2.1`). If omitted, you're prompted interactively once the optimal sites are found |
 
 If you omit `-c`, you'll be prompted to choose the construct type before the
 run starts, and if `-V` is also used, the vector menu is shown right after
@@ -206,7 +207,38 @@ follow the same convention: vector name in the filename, plus a
 to order.
 
 For `syntasiRNA`, you can define multiple groups of genes/sequences by
-separating the groups with `:`, e.g. `-a gen1,gen2:gen3,gen4`.
+separating the groups with `:`, e.g. `-a gen1,gen2:gen3,gen4` (or, with
+`-f`, `-f group1.fa:group2.fa`). Each group is treated as an independent
+gene set and gets its own guide design; the same applies to `-a`, but note
+that each gene set is validated as a whole against the database, while the
+output folder/file names are only derived from the first gene set.
+
+**Choosing which sites to clone (`syntasiRNA` + `-V`):** a tandem
+syn-tasiRNA construct needs one (or more) guide per gene set, chosen by you
+and in a specific order — P-SAMS never guesses this for you. Once the
+optimal sites for every gene set have been found, each one is addressed as
+`geneset.site` (gene set 1's first optimal site is `1.1`, its second is
+`1.2`, gene set 3's second optimal site is `3.2`, etc. — the same labels
+used in the TSV's `Gene_set`/`Site_index` columns and the JSON's
+`"optimal 1.1"` keys). If `-O/--order` wasn't given on the command line,
+you're prompted for this list interactively:
+
+```
+Optimal syn-tasiRNA sites found:
+  1.1   ACGTACGT...
+  1.2   TTGCTTGC...
+  2.1   GGCAGGCA...
+  3.1   AATTAATT...
+  3.2   CCGGCCGG...
+Enter the sites to clone, in order (e.g. 1.1,3.2,2.1): 1.1,3.2,2.1
+```
+
+The chosen sites are cloned into the vector in the order given, and recorded
+under `"selected_sites"` in the `_psams.json` output. You don't have to
+select exactly one site per gene set: a gene set can be left out, or have
+more than one of its sites included, if that's what the construct needs.
+Passing `-O "1.1,3.2,2.1"` skips the interactive prompt (useful for scripted
+or cluster runs).
 
 **Re-running with a different vector:** every run writes a vector-agnostic
 `{accession}_psams.json` cache alongside the vector-specific file. If you
@@ -233,6 +265,10 @@ runs/Nbe01g01610/Nbe01g01610.7_psams_output/
     ├── site_0001_TargetFinder_result.json # TargetFinder output per candidate
     └── ...
 ```
+
+For `syntasiRNA` runs, the optimal/suboptimal TSVs carry an extra `Gene_set`
+column (all gene sets share the same file), so a row's `geneset.site` label
+is `Gene_set.Site_index`.
 
 If `-o` already contains complete results for those accessions, the script
 detects this and exits without re-running the analysis — unless `-V` is

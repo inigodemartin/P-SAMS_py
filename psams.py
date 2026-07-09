@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
-from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions
+from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, parse_syn_order
 from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
 from src.add_species import create_kmer_db
-from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, select_vector, prompt_target_site, vector_filename_suffix
+from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, select_vector, prompt_target_site, vector_filename_suffix, prompt_syn_order
 
 import os
 import shutil
@@ -24,7 +24,7 @@ MIN_LENGTH = 9
 
 
 
-def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs=1, limit=3):
+def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs=1, limit=3, gene_set=None):
 
     #################################
     # Identify putative targe sites #
@@ -44,7 +44,7 @@ def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRN
     ######################################
     opt, subopt = serial_jobs(
     target_count, construct, transcript_dict,
-    site_scores, TARGETFINDER, mRNA_fa, conn, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta, jobs, limit)
+    site_scores, TARGETFINDER, mRNA_fa, conn, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta, jobs, limit, gene_set)
 
 
     ##################################
@@ -98,10 +98,15 @@ def main():
         first_fasta = fasta.split(":")[0]
         accession_list = list(build_fg_index_fasta(convert_fasta_to_string(first_fasta)).keys())
     else:
-        # Check if transcript inputs are valid (if that ID is in the DB)
+        # Check if transcript inputs are valid (if that ID is in the DB).
+        # For syntasiRNA, "accessions" may hold several ':'-separated gene
+        # sets (each itself a comma-separated list); flatten across all
+        # gene sets for validation, but name the run after the first gene
+        # set only (mirrors the -f/--fasta path above).
         transcripts_list = get_transcripts(mRNA_fa)
-        accession_list = accessions.split(',')
-        check_accessions(accession_list, transcripts_list)
+        accession_groups = [g.split(',') for g in accessions.split(':')]
+        check_accessions([acc for group in accession_groups for acc in group], transcripts_list)
+        accession_list = accession_groups[0]
 
     # create outputr folder and check if outputs already exist
     accession_key = '_'.join(accession_list)
@@ -127,7 +132,7 @@ def main():
 
     # check if results for given input are already performed
     results_file = output_folder / f"{accession_key}_optimal_results.tsv"
-    check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct)
+    check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct, order=args.order)
 
     if noofftarget:
         # No off-target checking means no optimal/suboptimal TSVs: nothing
@@ -136,7 +141,7 @@ def main():
         subopt_name = f"{output_folder}/{accession_key}_suboptimal_results.tsv"
         opt_name = f"{output_folder}/{accession_key}_optimal_results.tsv"
     else:
-        subopt_name, opt_name = create_outputs(accession_list, output_folder)
+        subopt_name, opt_name = create_outputs(accession_list, output_folder, syntasirna=(construct == "syntasiRNA"))
 
     ##################################################################
     # Run the pipeline distinguishing between amiRNA and syntasiRNA  #
@@ -181,7 +186,7 @@ def main():
             for g in range(count):
                 fasta_str = convert_fasta_to_string(fasta_groups[g])
                 transcript_dict = build_fg_index_fasta(fasta_str)
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit)
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,
@@ -196,7 +201,7 @@ def main():
             for g in range(count):
                 accession_list = accession_groups[g].split(',')
                 transcript_dict = build_fg_index(accession_list, conn, species, mRNA_fa)
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit)
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,
@@ -207,19 +212,19 @@ def main():
         syntasirna_json(count, groups, base_output, no_offtarget=noofftarget)
 
         if vector:
-            syn_guides = []
-            for g in range(count):
-                group = groups[g]
-                if group["opt"] > 0:
-                    syn_guides.append(group["opt_r"][1]["guide"])
-                elif group["sub"] > 0:
-                    syn_guides.append(group["sub_r"][1]["guide"])
+            site_index = syn_optimal_site_index(groups, count)
             cloning_oligos = None
-            if syn_guides:
+            selected_sites = None
+            if not site_index:
+                print("No optimal syn-tasiRNA sites were found for any gene set; skipping vector-specific oligo design.")
+            else:
+                order = args.order or prompt_syn_order(site_index)
+                syn_guides = parse_syn_order(order, site_index)
+                selected_sites = [t.strip() for t in order.split(',')]
                 fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
                 cloning_oligos = {"forward": fwd, "reverse": rev}
             vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(vector)}_psams.json"
-            syntasirna_json(count, groups, vector_output, vector=vector, cloning_oligos=cloning_oligos, no_offtarget=noofftarget)
+            syntasirna_json(count, groups, vector_output, vector=vector, cloning_oligos=cloning_oligos, no_offtarget=noofftarget, selected_sites=selected_sites)
         else:
             # No vector selected: the cache is the only result, surface it.
             shutil.copy2(base_output, visible_output)

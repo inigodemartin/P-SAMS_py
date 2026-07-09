@@ -1,4 +1,5 @@
 import argparse
+import re
 
 
 def select_construct() -> str:
@@ -39,6 +40,12 @@ def parse_args():
         dest="target_site",
         metavar="SEQ",
         help="22-nt miRNA target site sequence. Required when the pMDC32B-B/c vector is selected with --construct syntasiRNA. If not provided and needed, it will be requested interactively.")
+    parser.add_argument("-O", "--order",
+        metavar="SITES",
+        help="Ordered, comma-separated list of syn-tasiRNA sites to clone into the vector, "
+             "as 'geneset.site' (e.g. '1.1,3.2,2.1' = gene set 1 site 1, then gene set 3 site 2, "
+             "then gene set 2 site 1). Only used with --construct syntasiRNA and -V/--vector; "
+             "if omitted, you'll be prompted interactively once the optimal sites are found.")
     parser.add_argument("-p", "--phytozome_fasta", help="Genome assembly fasta")
     parser.add_argument("-d", "--descriptions", help="Annotation description file")
     parser.add_argument("-v", "--version", help="Genome version")
@@ -66,5 +73,11 @@ def parse_args():
         if invalid or len(ts) != 22:
             parser.error("--target-site must be a 22-nt DNA sequence (only A, C, G, T bases allowed).")
         args.target_site = ts
+
+    if args.order:
+        tokens = [t.strip() for t in args.order.split(',')]
+        if not tokens or not all(re.fullmatch(r"\d+\.\d+", t) for t in tokens):
+            parser.error("-O/--order must be a comma-separated list of 'geneset.site' pairs, e.g. '1.1,3.2,2.1'.")
+        args.order = ",".join(tokens)
 
     return args
