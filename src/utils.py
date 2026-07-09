@@ -273,6 +273,75 @@ def create_outputs(accessions, output_folder, syntasirna=False):
 
     return subopt_name, opt_name
 
+
+def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
+    """
+    Reconstruct already-evaluated candidates from a previous partial run's
+    TSV rows and its cached tf_results/*.json files, so a resumed run
+    (e.g. -l raised past what was already found, or -u/--unlimit requested
+    on a previously-capped run) can skip TargetFinder entirely for guides
+    already evaluated and only look for new ones.
+
+    Returns (opt, subopt, seen_guides, start_count):
+      opt, subopt : lists in the shape serial_jobs builds internally,
+                    ready to seed a resumed serial_jobs() call
+      seen_guides : set of guide sequences already evaluated (any verdict)
+      start_count : highest Site_index already used, so new TSV rows and
+                    tf_results files continue numbering instead of
+                    colliding with the existing ones
+    """
+    gs_prefix = f"gs{gene_set}_" if gene_set is not None else ""
+    opt = []
+    subopt = []
+    seen_guides = set()
+    start_count = 0
+
+    def _rows(path):
+        path = Path(path)
+        if not path.exists():
+            return
+        with open(path) as fh:
+            header = fh.readline()
+            if not header:
+                return
+            cols = header.rstrip("\n").split("\t")
+            for line in fh:
+                if not line.strip():
+                    continue
+                values = line.rstrip("\n").split("\t")
+                row = dict(zip(cols, values))
+                if gene_set is not None and int(row.get("Gene_set", gene_set)) != gene_set:
+                    continue
+                yield row
+
+    def _load_tf(count):
+        path = Path(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json")
+        return path.read_text() if path.exists() else ""
+
+    for row in _rows(opt_name):
+        count = int(row["Site_index"])
+        start_count = max(start_count, count)
+        opt.append({
+            'guide': row['Guide'], 'star': row['Star'],
+            'oligo1': row['Oligo1'], 'oligo2': row['Oligo2'],
+            'tf': _load_tf(count),
+        })
+        seen_guides.add(row['Guide'])
+
+    for row in _rows(subopt_name):
+        count = int(row["Site_index"])
+        start_count = max(start_count, count)
+        site = {
+            'guide': row['Guide'], 'star': row['Star'],
+            'oligo1': row['Oligo1'], 'oligo2': row['Oligo2'],
+            'tf': _load_tf(count),
+        }
+        subopt.append({'off_targets': int(row['Offtarget_N']), 'site': site})
+        seen_guides.add(row['Guide'])
+
+    return opt, subopt, seen_guides, start_count
+
+
 def add_species_to_config(config_file, species, sql_db, mrna_path):
     """
     Append a new species block to the configuration file.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
-from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, parse_syn_order
+from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, parse_syn_order, load_resume_state
 from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
@@ -24,7 +24,7 @@ MIN_LENGTH = 9
 
 
 
-def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs=1, limit=3, gene_set=None):
+def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs=1, limit=3, gene_set=None, existing_opt=None, existing_subopt=None, seen_guides=None, start_count=0):
 
     #################################
     # Identify putative targe sites #
@@ -44,7 +44,8 @@ def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRN
     ######################################
     opt, subopt = serial_jobs(
     target_count, construct, transcript_dict,
-    site_scores, TARGETFINDER, mRNA_fa, conn, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta, jobs, limit, gene_set)
+    site_scores, TARGETFINDER, mRNA_fa, conn, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta, jobs, limit, gene_set,
+    existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
 
 
     ##################################
@@ -134,12 +135,21 @@ def main():
     results_file = output_folder / f"{accession_key}_optimal_results.tsv"
     check_output(results_file, accession_list, output_folder, base_output, vector, target_site, construct, order=args.order, limit=limit, unlimit=unlimit)
 
+    # Resuming: a previous partial run (e.g. capped by a lower -l/--limit)
+    # already wrote optimal_results.tsv. Reuse it instead of truncating it
+    # via create_outputs — the pipeline below will load_resume_state() from
+    # it and skip TargetFinder for every guide already evaluated.
+    resume = (not noofftarget) and results_file.exists()
+
     if noofftarget:
         # No off-target checking means no optimal/suboptimal TSVs: nothing
         # is actually being classified as optimal vs. suboptimal, so those
         # files would only ever contain a header. Only the JSON is written.
         subopt_name = f"{output_folder}/{accession_key}_suboptimal_results.tsv"
         opt_name = f"{output_folder}/{accession_key}_optimal_results.tsv"
+    elif resume:
+        subopt_name = f"{output_folder}/{accession_key}_suboptimal_results.tsv"
+        opt_name = str(results_file)
     else:
         subopt_name, opt_name = create_outputs(accession_list, output_folder, syntasirna=(construct == "syntasiRNA"))
 
@@ -156,7 +166,12 @@ def main():
             accession_list = accessions.split(',')
             transcript_dict = build_fg_index(accession_list, conn, species, mRNA_fa)
 
-        opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit)
+        if resume:
+            existing_opt, existing_subopt, seen_guides, start_count = load_resume_state(tf_results, opt_name, subopt_name)
+        else:
+            existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
+
+        opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
 
         amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget)
 
@@ -186,7 +201,11 @@ def main():
             for g in range(count):
                 fasta_str = convert_fasta_to_string(fasta_groups[g])
                 transcript_dict = build_fg_index_fasta(fasta_str)
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1)
+                if resume:
+                    existing_opt, existing_subopt, seen_guides, start_count = load_resume_state(tf_results, opt_name, subopt_name, gene_set=g + 1)
+                else:
+                    existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,
@@ -201,7 +220,11 @@ def main():
             for g in range(count):
                 accession_list = accession_groups[g].split(',')
                 transcript_dict = build_fg_index(accession_list, conn, species, mRNA_fa)
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1)
+                if resume:
+                    existing_opt, existing_subopt, seen_guides, start_count = load_resume_state(tf_results, opt_name, subopt_name, gene_set=g + 1)
+                else:
+                    existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,

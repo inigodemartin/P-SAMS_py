@@ -325,7 +325,7 @@ def _run_targetfinder(targetfinder, guide, mRNA_fa, query_name):
     return result.stdout.splitlines()
 
 
-def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1, limit=3, gene_set=None):
+def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1, limit=3, gene_set=None, existing_opt=None, existing_subopt=None, seen_guides=None, start_count=0):
     """
     Run serial jobs for amiRNA evaluation.
 
@@ -369,6 +369,21 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
         different gene sets (which share the same TSV file) can be told
         apart. None (default) for amiRNA, which has no gene sets.
 
+    existing_opt, existing_subopt : list, optional
+        Already-evaluated optimal/suboptimal candidates from a previous
+        partial run (see utils.load_resume_state), to resume from instead
+        of starting over.
+
+    seen_guides : set, optional
+        Guide sequences already evaluated in a previous partial run;
+        candidates with these guides are skipped instead of being sent to
+        TargetFinder again.
+
+    start_count : int, optional
+        Highest Site_index/tf_results file number already used by a
+        previous partial run, so resumed rows/files continue numbering
+        instead of colliding with existing ones.
+
     jobs : int
         Number of TargetFinder calls to run in parallel. Default = 1 (serial).
 
@@ -384,13 +399,29 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
     subopt_cm = open(subopt_name, 'a', buffering=1) if bg else contextlib.nullcontext(None)
     opt_cm = open(opt_name, 'a', buffering=1) if bg else contextlib.nullcontext(None)
     row_prefix = f"{gene_set}\t" if gene_set is not None else ""
+    gs_prefix = f"gs{gene_set}_" if gene_set is not None else ""
+
+    # Resuming: candidates whose guide was already evaluated in a previous
+    # partial run are dropped from site_scores so TargetFinder never runs
+    # on them again; only genuinely new candidates go through the loop
+    # below, and their results are appended to the already-found ones.
+    if seen_guides:
+        site_scores = [s for s in site_scores if s['guide'] not in seen_guides]
 
     with subopt_cm as subopt_out, opt_cm as opt_out:
 
         start_time = time.time()
 
-        optimal_ref = [0]
-        suboptimal_ref = [0]
+        opt = list(existing_opt) if existing_opt else []
+        subopt = list(existing_subopt) if existing_subopt else []
+
+        # Already have enough optimal results from a previous run: nothing
+        # left to do for this gene set.
+        if not unlimit and len(opt) >= limit:
+            site_scores = []
+
+        optimal_ref = [len(opt)]
+        suboptimal_ref = [len(subopt)]
 
         stop_event = threading.Event()
 
@@ -401,9 +432,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
         )
         thread.start()
 
-        opt = []
-        subopt = []
-        count = 0
+        count = start_count
 
         n_sites = len(site_scores)
         jobs = max(1, jobs)
@@ -500,7 +529,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                             f"{site['names']}\t{site['seqs']}\n"
                         )
 
-                        with open(f"{tf_dir}/site_{count:04d}_TargetFinder_result.json", "w") as siteout:
+                        with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)
 
                         optimal_ref[0] += 1
@@ -525,7 +554,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                             f"{site['names']}\t{site['seqs']}\n"
                         )
 
-                        with open(f"{tf_dir}/site_{count:04d}_TargetFinder_result.json", "w") as siteout:
+                        with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)
 
                         suboptimal_ref[0] += 1
@@ -544,7 +573,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                             f"{site['names']}\t{site['seqs']}\n"
                         )
 
-                        with open(f"{tf_dir}/site_{count:04d}_TargetFinder_result.json", "w") as siteout:
+                        with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)
 
                         optimal_ref[0] += 1
@@ -563,7 +592,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                             f"{site['names']}\t{site['seqs']}\n"
                         )
 
-                        with open(f"{tf_dir}/site_{count:04d}_TargetFinder_result.json", "w") as siteout:
+                        with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)
 
                         suboptimal_ref[0] += 1

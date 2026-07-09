@@ -116,6 +116,7 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-t, --foldback`     | `eudicot` (default) or `monocot` |
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
 | `-u, --unlimit`      | Don't limit to 3 optimal results: go through all possible candidates (slower) |
+| `-l, --limit`        | Maximum number of optimal results to find before stopping. Default = 3. Ignored if `-u/--unlimit` is set |
 | `-j, --jobs`         | Number of TargetFinder jobs to run in parallel. Default = 1 (serial) |
 | `-V, --vector`       | Prompts an interactive menu to pick a cloning vector (see below). Adds vector-specific cloning oligos to the output |
 | `-T, --target-site`  | 22-nt miRNA target site sequence. Only required when the `pMDC32B-B/c` vector is selected. If omitted and needed, it is requested interactively |
@@ -252,6 +253,15 @@ Reusing cached results and generating cloning oligos for vector 'pMDC32B-OsMIR39
 Output: runs/Nbe01g01610/Nbe01g01610.7_psams_output/Nbe01g01610.7_pMDC32B-OsMIR390-Bc_psams.json
 Exiting script.
 ```
+
+**Re-running with a higher `-l/--limit` (or `-u`):** if a previous run already
+found at least as many optimal results as the newly requested `-l` (or was
+run with `-u`), it's reused as-is, same as above. But if you ask for *more*
+than what's cached (e.g. a first run used `-l 3` and you rerun the same
+input with `-l 10`), P-SAMS resumes instead of starting over: every guide
+already evaluated in the previous run (whether it ended up optimal or
+suboptimal) is skipped — TargetFinder is only invoked for genuinely new
+candidates — and the results are merged into the existing TSVs and JSON.
 
 ### Generated results
 
