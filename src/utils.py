@@ -253,9 +253,9 @@ def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_e
         time.sleep(1)
 
 
-def create_outputs(accessions, output_folder, syntasirna=False):
-    subopt_name = f"{output_folder}/{'_'.join(accessions)}_suboptimal_results.tsv"
-    opt_name = f"{output_folder}/{'_'.join(accessions)}_optimal_results.tsv"
+def create_outputs(run_key, output_folder, syntasirna=False):
+    subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
+    opt_name = f"{output_folder}/{run_key}_optimal_results.tsv"
 
     with open(subopt_name, 'w') as subopt, open(opt_name, 'w') as opt:
         if syntasirna:
@@ -444,7 +444,7 @@ def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str,
         data["cloning_oligos"] = {"forward": fwd, "reverse": rev}
 
 
-def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, construct=None, limit=3, unlimit=False, want_vector_info=False):
+def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, construct=None, limit=3, unlimit=False, want_vector_info=False, run_key=None):
     """
     If a previous full run's results already exist for this input, avoid
     re-running the (slow) TargetFinder pipeline.
@@ -466,6 +466,12 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
     chosen here at all (want_vector_info is just True/False) — instead the
     already-known optimal sites and the clone_vector.py command to run next
     are printed, same as at the end of a fresh syntasiRNA run.
+
+    run_key namespaces every file this function reads/writes by construct
+    (see psams.py), so an amiRNA run and a syntasiRNA run for the same
+    accession(s) in the same output folder never read or overwrite each
+    other's cache/results. Falls back to the plain accession key when not
+    given (e.g. by older callers).
     """
     if not results_file.exists():
         return
@@ -477,15 +483,17 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
     if unlimit or optimal_count < limit:
         return
 
+    run_key = run_key or '_'.join(accession_list)
+
     if not vector and not want_vector_info:
-        visible_output = output_folder / f"{'_'.join(accession_list)}_psams.json"
+        visible_output = output_folder / f"{run_key}_psams.json"
         if base_output and base_output.exists() and not visible_output.exists():
             shutil.copy2(base_output, visible_output)
-        print(f"P-SAMS already executed for {'_'.join(accession_list)}.\nResults in {output_folder.resolve()}.\nExiting script.")
+        print(f"P-SAMS already executed for {'_'.join(accession_list)} ({construct}).\nResults in {output_folder.resolve()}.\nExiting script.")
         sys.exit(0)
 
     if not base_output.exists():
-        print(f"P-SAMS already executed for {'_'.join(accession_list)}, but its cached results file ({base_output.name}) is missing. Re-running.")
+        print(f"P-SAMS already executed for {'_'.join(accession_list)} ({construct}), but its cached results file ({base_output.name}) is missing. Re-running.")
         return
 
     with open(base_output, "r") as f:
@@ -493,7 +501,7 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
 
     if construct == "amiRNA":
         apply_vector_to_amirna_output(data, vector)
-        vector_output = output_folder / f"{'_'.join(accession_list)}_{vector_filename_suffix(vector)}_psams.json"
+        vector_output = output_folder / f"{run_key}_{vector_filename_suffix(vector)}_psams.json"
         with open(vector_output, "w") as out:
             json.dump(data, out, indent=2)
         print(

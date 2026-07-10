@@ -51,12 +51,33 @@ def parse_args():
     return args
 
 
-def _find_cache_json(output_folder: Path) -> Path:
+def _find_cache_json(output_folder: Path, vector: str) -> Path:
     cache_dir = output_folder / ".cache"
     matches = sorted(cache_dir.glob("*_psams.json")) if cache_dir.exists() else []
     if not matches:
         sys.exit(f"Error: no cached results found in {cache_dir} — run psams.py on this input first.")
-    return matches[0]
+
+    if len(matches) == 1:
+        return matches[0]
+
+    # amiRNA and syntasiRNA can now be run into the same output folder
+    # (psams.py namespaces their cache files separately), so more than one
+    # cached run may be sitting here. Vector names are unique to one
+    # construct, so the requested -V vector disambiguates which one to use.
+    wants_syntasirna = vector in SYNTASIRNA_VECTORS
+    wants_amirna = vector in AMIRNA_VECTORS
+    for path in matches:
+        with open(path) as f:
+            is_syn = "blocks" in json.load(f)
+        if is_syn and wants_syntasirna:
+            return path
+        if not is_syn and wants_amirna:
+            return path
+
+    sys.exit(
+        f"Error: multiple cached runs found in {cache_dir} "
+        f"({', '.join(p.name for p in matches)}) and none match vector '{vector}'."
+    )
 
 
 def main():
@@ -65,7 +86,7 @@ def main():
     if not output_folder.exists():
         sys.exit(f"Error: output folder not found: {output_folder}")
 
-    cache_json = _find_cache_json(output_folder)
+    cache_json = _find_cache_json(output_folder, args.vector)
     with open(cache_json) as f:
         data = json.load(f)
 

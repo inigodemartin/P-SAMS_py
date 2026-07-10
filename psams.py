@@ -115,8 +115,19 @@ def main():
     output_folder = output_path / f"{accession_key}_psams_output{folder_suffix}"
     os.makedirs(output_folder, exist_ok=True)
 
+    # amiRNA and syntasiRNA can be run for the same accession(s) into the
+    # same output folder: every construct-specific file below is keyed off
+    # run_key, not just accession_key, so a syntasiRNA run never collides
+    # with (or gets misread as) a previous amiRNA run's cache/results, and
+    # vice versa. amiRNA keeps the original, unsuffixed naming so runs from
+    # before this fix are still recognized as already-computed.
+    run_key = accession_key if construct == "amiRNA" else f"{accession_key}_{construct}"
+
     # TargetFinder only runs when off-target checking is enabled, so its
     # per-site result folder is pointless (and never written to) in -n mode.
+    # tf_results is shared across constructs: amiRNA's site files are never
+    # gene-set-prefixed while syntasiRNA's always are (see serial_jobs'
+    # gs_prefix), so their filenames never collide even in the same dir.
     tf_results = output_folder / "tf_results"
     if not noofftarget:
         os.makedirs(tf_results, exist_ok=True)
@@ -128,12 +139,12 @@ def main():
     # vector-specific result and gets mistaken for a second, valid result.
     cache_dir = output_folder / ".cache"
     os.makedirs(cache_dir, exist_ok=True)
-    base_output = cache_dir / f"{accession_key}_psams.json"
-    visible_output = output_folder / f"{accession_key}_psams.json"
+    base_output = cache_dir / f"{run_key}_psams.json"
+    visible_output = output_folder / f"{run_key}_psams.json"
 
     # check if results for given input are already performed
-    results_file = output_folder / f"{accession_key}_optimal_results.tsv"
-    check_output(results_file, accession_list, output_folder, base_output, vector, construct, limit=limit, unlimit=unlimit, want_vector_info=bool(args.vector))
+    results_file = output_folder / f"{run_key}_optimal_results.tsv"
+    check_output(results_file, accession_list, output_folder, base_output, vector, construct, limit=limit, unlimit=unlimit, want_vector_info=bool(args.vector), run_key=run_key)
 
     # Resuming: a previous partial run (e.g. capped by a lower -l/--limit)
     # already wrote optimal_results.tsv. Reuse it instead of truncating it
@@ -145,13 +156,13 @@ def main():
         # No off-target checking means no optimal/suboptimal TSVs: nothing
         # is actually being classified as optimal vs. suboptimal, so those
         # files would only ever contain a header. Only the JSON is written.
-        subopt_name = f"{output_folder}/{accession_key}_suboptimal_results.tsv"
-        opt_name = f"{output_folder}/{accession_key}_optimal_results.tsv"
+        subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
+        opt_name = f"{output_folder}/{run_key}_optimal_results.tsv"
     elif resume:
-        subopt_name = f"{output_folder}/{accession_key}_suboptimal_results.tsv"
+        subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
         opt_name = str(results_file)
     else:
-        subopt_name, opt_name = create_outputs(accession_list, output_folder, syntasirna=(construct == "syntasiRNA"))
+        subopt_name, opt_name = create_outputs(run_key, output_folder, syntasirna=(construct == "syntasiRNA"))
 
     ##################################################################
     # Run the pipeline distinguishing between amiRNA and syntasiRNA  #
@@ -181,7 +192,7 @@ def main():
                     fwd, rev = make_amirna_oligos(res['guide'], res['star'], vector)
                     res['oligo1'] = fwd
                     res['oligo2'] = rev
-            vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(vector)}_psams.json"
+            vector_output = output_folder / f"{run_key}_{vector_filename_suffix(vector)}_psams.json"
             amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget)
         else:
             # No vector selected: the cache is the only result, surface it.
@@ -247,7 +258,7 @@ def main():
 
         shutil.copy2(base_output, visible_output)
 
-        print("Finished running P-SMAS successfully!")
+        print("Finished running P-SAMS successfully!")
 
 
 if __name__ == "__main__":
