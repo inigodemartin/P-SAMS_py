@@ -111,8 +111,8 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-a, --accessions`   | Gene accession(s), comma-separated. Requires `-s` |
 | `-f, --fasta`        | Alternative to `-a`: FASTA file with the sequence(s) to analyze |
 | `-s, --species`      | Species as it appears in `psams.conf`. Required if using `-a`, or if using `-f` and off-target prediction is wanted |
-| `-o, --output_path`  | Folder where results are created (defaults to the current directory) |
-| `-r, --run_name`     | Name for this run's output subfolder, instead of auto-naming it after the first accession/gene set. **Required** for `syntasiRNA` runs with more than one `:`-separated gene set — see below |
+| `-o, --output_path`  | Folder where results are created (defaults to the current directory). For `syntasiRNA` runs with more than one gene set and no `-r`, the last path component doubles as the run name — see below |
+| `-r, --run_name`     | Name for this run's output subfolder, instead of auto-naming it after the first accession/gene set. **Required** for `syntasiRNA` runs with more than one `:`-separated gene set, unless `-o` already supplies a name — see below |
 | `-c, --construct`    | `amiRNA` or `syntasiRNA`. If omitted, you're prompted to choose interactively |
 | `-t, --foldback`     | `eudicot` (default) or `monocot` |
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
@@ -222,18 +222,27 @@ optimal site is `3.2`, etc. — the same labels used in the TSV's
 
 With more than one gene set, the output folder can no longer be auto-named
 after "the first gene" — that would silently hide the other gene sets from
-the folder name — so **`-r/--run_name` is required** to name it explicitly;
-`psams.py` exits with an error if it's missing:
+the folder name — so it needs to be named explicitly, either with
+`-r/--run_name`:
 
 ```bash
 python3 psams.py -a gen1,gen2:gen3,gen4 -s Nicotiana_benthamiana \
     -c syntasiRNA -o runs/Nbe01g01610 -r gen1_and_gen3 -V
 ```
 
-This creates `runs/Nbe01g01610/gen1_and_gen3_psams_output/` (rather than a
-folder auto-named after `gen1,gen2` alone). With a single gene set,
-`-r/--run_name` is optional and only overrides the default accession-based
-folder name if you want to.
+or, since passing both a path and a name is redundant, by just putting the
+name as the last component of `-o/--output_path`:
+
+```bash
+python3 psams.py -a gen1,gen2:gen3,gen4 -s Nicotiana_benthamiana \
+    -c syntasiRNA -o runs/Nbe01g01610/gen1_and_gen3 -V
+```
+
+Both create `runs/Nbe01g01610/gen1_and_gen3_psams_output/` (rather than a
+folder auto-named after `gen1,gen2` alone). `psams.py` exits with an error
+only if neither is given. With a single gene set, `-r/--run_name` is
+optional and only overrides the default accession-based folder name if you
+want to.
 
 ```
 Finished running P-SAMS successfully!

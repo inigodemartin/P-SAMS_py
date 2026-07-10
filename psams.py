@@ -100,19 +100,27 @@ def main():
     # syntasiRNA can define several ':'-separated gene sets, each targeted
     # by its own guide(s); the output folder used to always be auto-named
     # after the first gene set alone, silently ignoring the others in its
-    # name. With more than one gene set that's misleading, so require an
-    # explicit -r/--run_name instead of guessing a folder name for the user.
+    # name. With more than one gene set that's misleading, so a run name is
+    # required instead of guessing a folder name for the user. Passing
+    # -r/--run_name AND a custom -o/--output_path would be redundant (the
+    # last path component of -o already reads as a name), so a custom -o
+    # doubles as the run name here: -o runs/gen1_and_gen3 behaves like
+    # -o runs -r gen1_and_gen3 used to.
     if construct == "syntasiRNA":
         group_source = fasta if fasta else accessions
         n_gene_sets = len(group_source.split(":"))
         if n_gene_sets > 1 and not args.run_name:
-            print(
-                f"ERROR: this syntasiRNA run defines {n_gene_sets} gene sets; "
-                "the output folder can't be auto-named after just the first one.\n"
-                "       Pass -r/--run_name to name it explicitly.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            if output_path != Path("."):
+                args.run_name = output_path.name
+                output_path = output_path.parent
+            else:
+                print(
+                    f"ERROR: this syntasiRNA run defines {n_gene_sets} gene sets; "
+                    "the output folder can't be auto-named after just the first one.\n"
+                    "       Pass -r/--run_name, or a named -o/--output_path, to name it explicitly.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
     #######################################
     # Load config and connect to database #
