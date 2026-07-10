@@ -56,6 +56,16 @@ def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRN
 
     return opt_count, subopt_count, opt_results, subopt_results
 
+
+def _warn_if_insufficient(opt_count: int, limit: int, unlimit: bool, gene_set: int = None) -> None:
+    """Warn when a run found no optimal sites, or fewer than the requested -l/--limit."""
+    label = f" for gene set {gene_set}" if gene_set is not None else ""
+    if opt_count == 0:
+        print(f"WARNING: no optimal sites were found{label}.")
+    elif not unlimit and opt_count < limit:
+        print(f"WARNING: only {opt_count} optimal site(s) were found{label} (fewer than the requested limit of {limit}).")
+
+
 def main():
     
     ################################
@@ -202,6 +212,8 @@ def main():
 
         opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
 
+        _warn_if_insufficient(opt_count, limit, unlimit)
+
         amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget)
 
         if vector:
@@ -235,6 +247,7 @@ def main():
                 else:
                     existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
                 opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
+                _warn_if_insufficient(opt_count, limit, unlimit, gene_set=g + 1)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,
@@ -254,6 +267,7 @@ def main():
                 else:
                     existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
                 opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
+                _warn_if_insufficient(opt_count, limit, unlimit, gene_set=g + 1)
                 groups[g] = {
                 "opt": opt_count,
                 "sub": subopt_count,

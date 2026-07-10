@@ -327,6 +327,23 @@ For `syntasiRNA` runs, the optimal/suboptimal TSVs carry an extra `Gene_set`
 column (all gene sets share the same file), so a row's `geneset.site` label
 is `Gene_set.Site_index`.
 
+If a run finds no optimal sites at all, or fewer than the requested
+`-l/--limit` (and `-u/--unlimit` wasn't used), a `WARNING:` line is printed
+so this doesn't go unnoticed:
+
+```
+WARNING: no optimal sites were found.
+WARNING: only 2 optimal site(s) were found (fewer than the requested limit of 3).
+```
+
+For `syntasiRNA` with several gene sets, each gene set is checked and
+reported on separately, since they're independent searches:
+
+```
+WARNING: no optimal sites were found for gene set 2.
+WARNING: only 1 optimal site(s) were found for gene set 3 (fewer than the requested limit of 3).
+```
+
 If `-o` already contains complete results for those accessions, the script
 detects this and exits without re-running the analysis — unless `-V` is
 used, in which case it reuses the cached `_psams.json` to generate the
