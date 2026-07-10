@@ -1,4 +1,4 @@
-from src.utils import design_guide_RNA, oligo_designer, base_pair, _status_loop, off_target_check
+from src.utils import design_guide_RNA, oligo_designer, base_pair, _status_loop, _render_status_line, off_target_check
 import sqlite3
 import json
 import time
@@ -624,10 +624,25 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                 break
 
         if executor:
-            executor.shutdown(wait=False, cancel_futures=True)
+            # wait=True: any candidates already prefetched and running when
+            # the limit was hit must finish before this function returns —
+            # with wait=False those TargetFinder subprocesses kept running
+            # as orphaned, non-daemon executor threads, which Python's
+            # interpreter shutdown then silently blocked on (the process
+            # looked hung, or dumped a KeyboardInterrupt traceback, well
+            # after "Finished running P-SAMS successfully!" had printed).
+            executor.shutdown(wait=True, cancel_futures=True)
 
         stop_event.set()
         thread.join()
+
+        # The for loop above can drain a whole burst of already-completed
+        # futures (jobs > 1) faster than the once-a-second status thread
+        # can observe, so the last line it printed may be stale (e.g. still
+        # showing 0 optimal sites right before this gene set's true count).
+        # Render one final, synchronous line with the actual end-of-loop
+        # counts before moving on.
+        _render_status_line(start_time, accession_list, optimal_ref, suboptimal_ref, potential_target_n, bg)
 
     print()
     return opt, subopt

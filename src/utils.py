@@ -218,6 +218,41 @@ def oligo_designer(guide: str, fb_type: str):
 
 
 
+def _render_status_line(start_time, accession_list, optimal_ref, suboptimal_ref, potential_target_n, offtarget=True):
+    """
+    Format and print one status line, overwriting the current terminal line.
+    Shared by _status_loop (ticks every second) and the final, synchronous
+    call made once a gene set's site_scores loop finishes — the loop can
+    drain a burst of already-completed futures (jobs > 1) faster than the
+    1s-interval background thread can observe, leaving a stale count on
+    screen otherwise.
+    """
+
+    elapsed = int(time.time() - start_time)
+
+    hours = elapsed // 3600
+    minutes = (elapsed % 3600) // 60
+    seconds = elapsed % 60
+
+    if offtarget:
+        line = (
+            f"Running P-SAMS for {','.join(accession_list)} | "
+            f"{hours:02d}:{minutes:02d}:{seconds:02d} | "
+            f"Optimal sites found: {optimal_ref[0]} | "
+            f"Suboptimal sites found: {suboptimal_ref[0]} | "
+            f"Potential target sites: {potential_target_n} | "
+        )
+    else:
+        line = f"Running P-SAMS for {','.join(accession_list)} in no-offtarget mode"
+
+    # Truncate to terminal width and clear the rest of the line, so a
+    # long line never wraps (which would turn each update into a new
+    # line on screen instead of overwriting the current one).
+    width = shutil.get_terminal_size((80, 20)).columns
+    sys.stdout.write("\r" + line[:width - 1] + "\033[K")
+    sys.stdout.flush()
+
+
 def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_event, potential_target_n, offtarget=True):
     """
     Live status line updated every second.
@@ -225,31 +260,7 @@ def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_e
     """
 
     while not stop_event.is_set():
-
-        elapsed = int(time.time() - start_time)
-
-        hours = elapsed // 3600
-        minutes = (elapsed % 3600) // 60
-        seconds = elapsed % 60
-
-        if offtarget:
-            line = (
-                f"Running P-SAMS for {','.join(accession_list)} | "
-                f"{hours:02d}:{minutes:02d}:{seconds:02d} | "
-                f"Optimal sites found: {optimal_ref[0]} | "
-                f"Suboptimal sites found: {suboptimal_ref[0]} | "
-                f"Potential target sites: {potential_target_n} | "
-            )
-        else:
-            line = f"Running P-SAMS for {','.join(accession_list)} in no-offtarget mode"
-
-        # Truncate to terminal width and clear the rest of the line, so a
-        # long line never wraps (which would turn each update into a new
-        # line on screen instead of overwriting the current one).
-        width = shutil.get_terminal_size((80, 20)).columns
-        sys.stdout.write("\r" + line[:width - 1] + "\033[K")
-        sys.stdout.flush()
-
+        _render_status_line(start_time, accession_list, optimal_ref, suboptimal_ref, potential_target_n, offtarget)
         time.sleep(1)
 
 
