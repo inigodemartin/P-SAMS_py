@@ -112,6 +112,7 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-f, --fasta`        | Alternative to `-a`: FASTA file with the sequence(s) to analyze |
 | `-s, --species`      | Species as it appears in `psams.conf`. Required if using `-a`, or if using `-f` and off-target prediction is wanted |
 | `-o, --output_path`  | Folder where results are created (defaults to the current directory) |
+| `-r, --run_name`     | Name for this run's output subfolder, instead of auto-naming it after the first accession/gene set. **Required** for `syntasiRNA` runs with more than one `:`-separated gene set — see below |
 | `-c, --construct`    | `amiRNA` or `syntasiRNA`. If omitted, you're prompted to choose interactively |
 | `-t, --foldback`     | `eudicot` (default) or `monocot` |
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
@@ -219,10 +220,20 @@ gene set gets its own optimal sites, addressed as `geneset.site` (gene set
 optimal site is `3.2`, etc. — the same labels used in the TSV's
 `Gene_set`/`Site_index` columns and the JSON's `"optimal 1.1"` keys).
 
+With more than one gene set, the output folder can no longer be auto-named
+after "the first gene" — that would silently hide the other gene sets from
+the folder name — so **`-r/--run_name` is required** to name it explicitly;
+`psams.py` exits with an error if it's missing:
+
 ```bash
 python3 psams.py -a gen1,gen2:gen3,gen4 -s Nicotiana_benthamiana \
-    -c syntasiRNA -o runs/Nbe01g01610 -V
+    -c syntasiRNA -o runs/Nbe01g01610 -r gen1_and_gen3 -V
 ```
+
+This creates `runs/Nbe01g01610/gen1_and_gen3_psams_output/` (rather than a
+folder auto-named after `gen1,gen2` alone). With a single gene set,
+`-r/--run_name` is optional and only overrides the default accession-based
+folder name if you want to.
 
 ```
 Finished running P-SAMS successfully!
@@ -245,7 +256,7 @@ Available cloning vectors for syntasiRNA:
 To generate the cloning oligos, edit the vector and site selection below
 (copy them from the lists above) and run:
 
-  python3 clone_vector.py -o runs/Nbe01g01610/gen1_gen2_psams_output -V "pMDC32B-AtTAS1c-B/c" -O "1.1,2.1,3.1"
+  python3 clone_vector.py -o runs/Nbe01g01610/gen1_and_gen3_psams_output -V "pMDC32B-AtTAS1c-B/c" -O "1.1,2.1,3.1"
 
 This reuses the sites already found here — it doesn't rerun TargetFinder.
 ```
@@ -274,13 +285,13 @@ overlap between the two constructs.
 | `-T, --target-site`    | syntasiRNA only. 22-nt miRNA target site sequence, required for the `pMDC32B-B/c` vector. If omitted and needed, it's requested interactively |
 
 ```bash
-python3 clone_vector.py -o runs/Nbe01g01610/gen1_gen2_psams_output \
+python3 clone_vector.py -o runs/Nbe01g01610/gen1_and_gen3_psams_output \
     -V "pMDC32B-AtTAS1c-B/c" -O "1.1,3.2,2.1"
 ```
 
 ```
 Cloning oligos generated for vector 'pMDC32B-AtTAS1c-B/c'.
-Output: runs/Nbe01g01610/gen1_gen2_psams_output/gen1_gen2_syntasiRNA_pMDC32B-AtTAS1c-Bc_psams.json
+Output: runs/Nbe01g01610/gen1_and_gen3_psams_output/gen1_and_gen3_syntasiRNA_pMDC32B-AtTAS1c-Bc_psams.json
 ```
 
 The chosen sites are cloned into the vector in the order given, and

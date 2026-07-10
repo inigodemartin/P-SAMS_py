@@ -26,6 +26,9 @@ def parse_args():
     parser.add_argument("-a", "--accessions",help="Gene accession(s). Comma-separated list. Not used if -f is set.")
     parser.add_argument("-s", "--species",help="Species. Required if -a is set.")
     parser.add_argument("-o", "--output_path",default=".",help="Output folder path.")
+    parser.add_argument("-r", "--run_name",help="Name for this run's output subfolder, instead of auto-naming it "
+             "after the first accession/gene set. Required for syntasiRNA runs with more than one "
+             "':'-separated gene set, since those can't be auto-named after just the first one.")
     parser.add_argument("-t", "--foldback",default="eudicot",choices=["eudicot", "monocot"],help="Foldback type [eudicot, monocot]. Default = eudicot.")
     parser.add_argument("-c", "--construct",choices=["amiRNA", "syntasiRNA"],help="Construct type. If omitted, you'll be prompted to choose interactively.")
     parser.add_argument("-n", "--noofftarget",action="store_true",help="Run without predicting off-target transcripts.")
