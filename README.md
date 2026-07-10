@@ -260,7 +260,11 @@ TargetFinder.
 A small, separate script whose only job is generating vector-specific
 cloning oligos for a run that `psams.py` already completed. It never runs
 TargetFinder — it just reads the cached, vector-agnostic
-`.cache/{accession}_psams.json` from a `psams.py` output folder.
+`.cache/{accession}_psams.json` (amiRNA) or
+`.cache/{accession}_syntasiRNA_psams.json` (syntasiRNA) from a `psams.py`
+output folder. If both exist in the same folder (see below), the requested
+`-V` vector picks the right one automatically, since vector names never
+overlap between the two constructs.
 
 | Flag | Description |
 |------|-------------|
@@ -276,7 +280,7 @@ python3 clone_vector.py -o runs/Nbe01g01610/gen1_gen2_psams_output \
 
 ```
 Cloning oligos generated for vector 'pMDC32B-AtTAS1c-B/c'.
-Output: runs/Nbe01g01610/gen1_gen2_psams_output/gen1_gen2_pMDC32B-AtTAS1c-Bc_psams.json
+Output: runs/Nbe01g01610/gen1_gen2_psams_output/gen1_gen2_syntasiRNA_pMDC32B-AtTAS1c-Bc_psams.json
 ```
 
 The chosen sites are cloned into the vector in the order given, and
@@ -316,6 +320,43 @@ If `-o` already contains complete results for those accessions, the script
 detects this and exits without re-running the analysis — unless `-V` is
 used, in which case it reuses the cached `_psams.json` to generate the
 vector-specific file without redoing the (slow) TargetFinder search.
+
+### Running amiRNA and syntasiRNA into the same output folder
+
+`-o` is keyed only by accession(s), not by construct, so pointing `amiRNA`
+and `syntasiRNA` runs of the same gene(s) at the same `-o` puts both inside
+one shared `..._psams_output/` folder — this is intentional, e.g. to keep
+every design explored for a gene in one place. Every file that's specific
+to one construct is namespaced so the two runs never collide or overwrite
+each other: `amiRNA` keeps its original, unsuffixed filenames (so runs from
+before this existed are still picked up as already-computed), and
+`syntasiRNA` files get a `_syntasiRNA` suffix.
+
+```bash
+python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -c amiRNA
+python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -c syntasiRNA
+```
+
+```
+runs/Nbe01g01610/Nbe01g01610.7_psams_output/
+├── Nbe01g01610.7_optimal_results.tsv                   # amiRNA
+├── Nbe01g01610.7_suboptimal_results.tsv                # amiRNA
+├── Nbe01g01610.7_psams.json                            # amiRNA
+├── Nbe01g01610.7_syntasiRNA_optimal_results.tsv        # syntasiRNA
+├── Nbe01g01610.7_syntasiRNA_suboptimal_results.tsv     # syntasiRNA
+├── Nbe01g01610.7_syntasiRNA_psams.json                 # syntasiRNA
+├── .cache/
+│   ├── Nbe01g01610.7_psams.json                        # amiRNA cache
+│   └── Nbe01g01610.7_syntasiRNA_psams.json             # syntasiRNA cache
+└── tf_results/
+    ├── site_0001_TargetFinder_result.json              # amiRNA (no gene-set prefix)
+    ├── site_gs1_0001_TargetFinder_result.json           # syntasiRNA (gene-set prefixed)
+    └── ...
+```
+
+`clone_vector.py -o runs/Nbe01g01610/Nbe01g01610.7_psams_output -V ...`
+picks the right cache automatically from the vector name you pass, since
+amiRNA and syntasiRNA vector names never overlap (see the tables above).
 
 ---
 
