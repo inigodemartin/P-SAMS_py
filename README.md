@@ -217,8 +217,9 @@ silence, each with its own guide, by separating them with `:`, e.g.
 `-a gen1,gen2:gen3,gen4` (or, with `-f`, `-f group1.fa:group2.fa`). Each
 gene set gets its own optimal sites, addressed as `geneset.site` (gene set
 1's first optimal site is `1.1`, its second is `1.2`, gene set 3's second
-optimal site is `3.2`, etc. — the same labels used in the TSV's
-`Gene_set`/`Site_index` columns and the JSON's `"optimal 1.1"` keys).
+optimal site is `3.2`, etc. — the same labels used in the JSON's
+`"optimal 1.1"` keys and in `{run_key}_psams.tsv`'s `Gene_set`/`Site_index`
+columns).
 
 With more than one gene set, the output folder can no longer be auto-named
 after "the first gene" — that would silently hide the other gene sets from
@@ -310,6 +311,18 @@ more than one of its sites included, if that's what the construct needs.
 `clone_vector.py` also works for `amiRNA` runs (just `-o` and `-V`, no
 `-O`/`-T` needed) as an alternative to re-running `psams.py -V`.
 
+**Cloning the same gene set(s) more than once, with a different `-O`:** a
+tandem construct can combine different sites, in a different order, each
+time you run `clone_vector.py` — every combination produces different
+cloning oligos. So for `syntasiRNA`, re-running `clone_vector.py` for the
+same vector with a *different* `-O` never overwrites the previous result:
+the first output keeps the plain name
+(`{run_key}_{vector}_psams.json`), and each subsequent, genuinely different
+set of oligos gets a numeric suffix instead (`..._psams_1.json`,
+`..._psams_2.json`, ...). Re-running with the exact same `-O`/vector (the
+same oligos) reuses/overwrites its own matching file rather than piling up
+duplicates.
+
 **Re-running with a higher `-l/--limit` (or `-u`):** if a previous run already
 found at least as many optimal results as the newly requested `-l` (or was
 run with `-u`), it's reused as-is, same as above. But if you ask for *more*
@@ -332,9 +345,15 @@ runs/Nbe01g01610/Nbe01g01610.7_psams_output/
     └── ...
 ```
 
-For `syntasiRNA` runs, the optimal/suboptimal TSVs carry an extra `Gene_set`
-column (all gene sets share the same file), so a row's `geneset.site` label
-is `Gene_set.Site_index`.
+`syntasiRNA` runs don't get an `_optimal_results.tsv`/`_suboptimal_results.tsv`
+pair: unlike `amiRNA`, a syntasiRNA candidate's cloning oligos aren't a
+per-site thing (they combine several *chosen* sites in a chosen order, see
+`clone_vector.py`), so a table with one oligo pair per optimal site wouldn't
+mean anything. Instead, `syntasiRNA` writes `{run_key}_psams.tsv`: every
+gene set/site/guide and every TargetFinder hit already present in the final
+JSON, flattened into one row per hit — `Gene_set` and `Site_index` together
+give the same `geneset.site` label used everywhere else (e.g. `1`/`2` →
+`1.2`).
 
 If a run finds no optimal sites at all, or fewer than the requested
 `-l/--limit` (and `-u/--unlimit` wasn't used), a `WARNING:` line is printed
@@ -379,12 +398,13 @@ runs/Nbe01g01610/Nbe01g01610.7_psams_output/
 ├── Nbe01g01610.7_optimal_results.tsv                   # amiRNA
 ├── Nbe01g01610.7_suboptimal_results.tsv                # amiRNA
 ├── Nbe01g01610.7_psams.json                            # amiRNA
-├── Nbe01g01610.7_syntasiRNA_optimal_results.tsv        # syntasiRNA
-├── Nbe01g01610.7_syntasiRNA_suboptimal_results.tsv     # syntasiRNA
 ├── Nbe01g01610.7_syntasiRNA_psams.json                 # syntasiRNA
+├── Nbe01g01610.7_syntasiRNA_psams.tsv                  # syntasiRNA, flattened from the JSON above
 ├── .cache/
 │   ├── Nbe01g01610.7_psams.json                        # amiRNA cache
-│   └── Nbe01g01610.7_syntasiRNA_psams.json             # syntasiRNA cache
+│   ├── Nbe01g01610.7_syntasiRNA_psams.json             # syntasiRNA cache
+│   ├── Nbe01g01610.7_syntasiRNA_optimal_results.tsv    # syntasiRNA checkpoint (resume only, no Oligo1/Oligo2)
+│   └── Nbe01g01610.7_syntasiRNA_suboptimal_results.tsv # syntasiRNA checkpoint (resume only)
 └── tf_results/
     ├── site_0001_TargetFinder_result.json              # amiRNA (no gene-set prefix)
     ├── site_gs1_0001_TargetFinder_result.json           # syntasiRNA (gene-set prefixed)

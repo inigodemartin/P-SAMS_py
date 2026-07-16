@@ -401,6 +401,25 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
     row_prefix = f"{gene_set}\t" if gene_set is not None else ""
     gs_prefix = f"gs{gene_set}_" if gene_set is not None else ""
 
+    def _opt_row(site, count):
+        # syntasiRNA (gene_set is not None) checkpoint rows never carry
+        # Oligo1/Oligo2 — see create_outputs.
+        cols = [f"{row_prefix}{count}", site['guide'], site['star']]
+        if gene_set is None:
+            cols += [site['oligo1'], site['oligo2']]
+        cols += [site['names'], site['seqs']]
+        return "\t".join(cols) + "\n"
+
+    def _subopt_row(site, count):
+        cols = [
+            f"{row_prefix}{count}", str(site['offtarget_number']), str(site['offtarget_list']),
+            site['guide'], site['star'],
+        ]
+        if gene_set is None:
+            cols += [site['oligo1'], site['oligo2']]
+        cols += [site['names'], site['seqs']]
+        return "\t".join(cols) + "\n"
+
     # Resuming: candidates whose guide was already evaluated in a previous
     # partial run are dropped from site_scores so TargetFinder never runs
     # on them again; only genuinely new candidates go through the loop
@@ -523,11 +542,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
 
                         opt.append(site)
 
-                        opt_out.write(
-                            f"{row_prefix}{count}\t{site['guide']}\t{site['star']}\t"
-                            f"{site['oligo1']}\t{site['oligo2']}\t"
-                            f"{site['names']}\t{site['seqs']}\n"
-                        )
+                        opt_out.write(_opt_row(site, count))
 
                         with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)
@@ -547,12 +562,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                             'site': site
                         })
 
-                        subopt_out.write(
-                            f"{row_prefix}{count}\t{site['offtarget_number']}\t{site['offtarget_list']}\t"
-                            f"{site['guide']}\t{site['star']}\t"
-                            f"{site['oligo1']}\t{site['oligo2']}\t"
-                            f"{site['names']}\t{site['seqs']}\n"
-                        )
+                        subopt_out.write(_subopt_row(site, count))
 
                         with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)
@@ -567,11 +577,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
 
                         opt.append(site)
 
-                        opt_out.write(
-                            f"{row_prefix}{count}\t{site['guide']}\t{site['star']}\t"
-                            f"{site['oligo1']}\t{site['oligo2']}\t"
-                            f"{site['names']}\t{site['seqs']}\n"
-                        )
+                        opt_out.write(_opt_row(site, count))
 
                         with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)
@@ -585,12 +591,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                             'site': site
                         })
 
-                        subopt_out.write(
-                            f"{row_prefix}{count}\t{site['offtarget_number']}\t{site['offtarget_list']}\t"
-                            f"{site['guide']}\t{site['star']}\t"
-                            f"{site['oligo1']}\t{site['oligo2']}\t"
-                            f"{site['names']}\t{site['seqs']}\n"
-                        )
+                        subopt_out.write(_subopt_row(site, count))
 
                         with open(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json", "w") as siteout:
                             json.dump(json.loads(site['tf']), siteout, indent=4)

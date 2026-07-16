@@ -265,24 +265,41 @@ def _status_loop(start_time, accession_list, optimal_ref, suboptimal_ref, stop_e
 
 
 def create_outputs(run_key, output_folder, syntasirna=False):
-    subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
-    opt_name = f"{output_folder}/{run_key}_optimal_results.tsv"
+    """
+    Create the checkpoint TSVs that TargetFinder results are appended to as
+    a run progresses (see serial_jobs), used to resume interrupted runs and
+    to detect already-computed ones (load_resume_state / check_output).
+
+    For syntasiRNA these live hidden in .cache/ instead of next to the
+    user-facing results, and never have Oligo1/Oligo2 columns: cloning
+    oligos for syntasiRNA combine several *chosen* sites in a chosen order
+    (see clone_vector.py) — there's no such thing as a per-site oligo pair,
+    so a table with one wouldn't mean anything. The user-facing equivalent
+    is the {run_key}_psams.tsv written at the end of the run (see
+    write_syntasirna_tsv), flattened straight from the final JSON.
+    """
+    if syntasirna:
+        cache_dir = Path(output_folder) / ".cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        subopt_name = cache_dir / f"{run_key}_suboptimal_results.tsv"
+        opt_name = cache_dir / f"{run_key}_optimal_results.tsv"
+        # syntasiRNA runs may cover several gene sets writing into this
+        # same file (one call per gene set); Gene_set identifies which
+        # gene set a row belongs to, so results can be addressed as
+        # "geneset.site" (e.g. "1.1", "3.2") when choosing what to clone.
+        subopt_header = 'Gene_set\tSite_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
+        opt_header = 'Gene_set\tSite_index\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
+    else:
+        subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
+        opt_name = f"{output_folder}/{run_key}_optimal_results.tsv"
+        subopt_header = 'Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
+        opt_header = 'Site_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
 
     with open(subopt_name, 'w') as subopt, open(opt_name, 'w') as opt:
-        if syntasirna:
-            # syntasiRNA runs may cover several gene sets writing into this
-            # same file (one call per gene set); Gene_set identifies which
-            # gene set a row belongs to, so results can be addressed as
-            # "geneset.site" (e.g. "1.1", "3.2") when choosing what to clone.
-            subopt_header = 'Gene_set\tSite_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
-            opt_header = 'Gene_set\tSite_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
-        else:
-            subopt_header = 'Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
-            opt_header = 'Site_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
         subopt.write(subopt_header)
         opt.write(opt_header)
 
-    return subopt_name, opt_name
+    return str(subopt_name), str(opt_name)
 
 
 def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
@@ -334,7 +351,9 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
         start_count = max(start_count, count)
         opt.append({
             'guide': row['Guide'], 'star': row['Star'],
-            'oligo1': row['Oligo1'], 'oligo2': row['Oligo2'],
+            # syntasiRNA checkpoint rows have no Oligo1/Oligo2 (see
+            # create_outputs) — unused downstream for that construct anyway.
+            'oligo1': row.get('Oligo1', ''), 'oligo2': row.get('Oligo2', ''),
             'tf': _load_tf(count),
         })
         seen_guides.add(row['Guide'])
@@ -344,7 +363,7 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
         start_count = max(start_count, count)
         site = {
             'guide': row['Guide'], 'star': row['Star'],
-            'oligo1': row['Oligo1'], 'oligo2': row['Oligo2'],
+            'oligo1': row.get('Oligo1', ''), 'oligo2': row.get('Oligo2', ''),
             'tf': _load_tf(count),
         }
         subopt.append({'off_targets': int(row['Offtarget_N']), 'site': site})
@@ -889,6 +908,47 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
 
     with open(output_file, "w") as out:
         json.dump(output, out, indent=2)
+
+    return output
+
+
+def write_syntasirna_tsv(data: dict, tsv_path) -> None:
+    """
+    Flatten a syntasiRNA JSON result (see syntasirna_json) into one flat,
+    human-readable TSV: one row per TargetFinder hit, carrying every field
+    already present in the final JSON (gene set, site, syn-tasiRNA guide,
+    and each matched target's accession/description/score/coordinates/
+    strand/sequence/base pairing).
+
+    Replaces the old per-site optimal/suboptimal TSVs: their Oligo1/Oligo2
+    columns didn't apply to syntasiRNA, since cloning oligos combine several
+    *chosen* sites in a chosen order (see clone_vector.py) rather than being
+    computed per optimal site.
+    """
+    rows = []
+    hit_keys = []  # union of hit fields, in first-seen order
+
+    for block in data.get("blocks", []):
+        for section in ("results", "optimal", "suboptimal"):
+            entries = block.get(section)
+            if not entries:
+                continue
+            for label, entry in entries.items():
+                gene_set, site = label.rsplit(" ", 1)[-1].split(".", 1)
+                guide = entry.get("syn-tasiRNA", "")
+                for hit in (entry.get("TargetFinder") or [{}]):
+                    for key in hit:
+                        if key not in hit_keys:
+                            hit_keys.append(key)
+                    rows.append((gene_set, section, site, guide, hit))
+
+    header = ["Gene_set", "Type", "Site_index", "syn-tasiRNA"] + hit_keys
+    with open(tsv_path, "w") as out:
+        out.write("\t".join(header) + "\n")
+        for gene_set, section, site, guide, hit in rows:
+            values = [gene_set, section, site, guide] + [str(hit.get(k, "")) for k in hit_keys]
+            out.write("\t".join(values) + "\n")
+
 
 def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_offtarget=False):
     """

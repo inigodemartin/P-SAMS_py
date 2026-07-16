@@ -80,6 +80,35 @@ def _find_cache_json(output_folder: Path, vector: str) -> Path:
     )
 
 
+def _syntasirna_vector_output_path(output_folder: Path, accession_key: str, vector: str, new_oligos: dict) -> Path:
+    """
+    Pick where to write this run's syntasiRNA cloning oligos for `vector`.
+
+    The same gene set(s) can be cloned more than once with a different site
+    selection/order (-O), which produces different oligos each time — so a
+    second, different result must never silently overwrite the first one.
+    The first ever output for a given vector keeps the plain, unsuffixed
+    name; subsequent *different* oligo sets get a numeric suffix (_1, _2,
+    ...). Re-running with the exact same selection/order (same oligos)
+    reuses/overwrites its own matching file instead of piling up duplicates.
+    """
+    suffix = vector_filename_suffix(vector)
+    n = 0
+    while True:
+        name = (
+            f"{accession_key}_{suffix}_psams.json" if n == 0
+            else f"{accession_key}_{suffix}_psams_{n}.json"
+        )
+        path = output_folder / name
+        if not path.exists():
+            return path
+        with open(path) as f:
+            existing = json.load(f)
+        if existing.get("cloning_oligos") == new_oligos:
+            return path
+        n += 1
+
+
 def main():
     args = parse_args()
     output_folder = Path(args.output_folder).resolve()
@@ -108,10 +137,11 @@ def main():
             target_site = prompt_target_site()
 
         apply_vector_to_syntasirna_output(data, args.vector, target_site, args.order)
+        vector_output = _syntasirna_vector_output_path(output_folder, accession_key, args.vector, data["cloning_oligos"])
     else:
         apply_vector_to_amirna_output(data, args.vector)
+        vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(args.vector)}_psams.json"
 
-    vector_output = output_folder / f"{accession_key}_{vector_filename_suffix(args.vector)}_psams.json"
     with open(vector_output, "w") as out:
         json.dump(data, out, indent=2)
 

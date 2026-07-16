@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
-from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
+from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, write_syntasirna_tsv, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
 from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
@@ -179,7 +179,13 @@ def main():
     visible_output = output_folder / f"{run_key}_psams.json"
 
     # check if results for given input are already performed
-    results_file = output_folder / f"{run_key}_optimal_results.tsv"
+    # For syntasiRNA these checkpoint TSVs live hidden in .cache/ (see
+    # create_outputs): they have no Oligo1/Oligo2 columns since cloning
+    # oligos combine several *chosen* sites in a chosen order, never one
+    # per optimal site. The user-facing equivalent is {run_key}_psams.tsv,
+    # written at the end of the syntasiRNA run from the final JSON.
+    results_dir = cache_dir if construct == "syntasiRNA" else output_folder
+    results_file = results_dir / f"{run_key}_optimal_results.tsv"
     check_output(results_file, accession_list, output_folder, base_output, vector, construct, limit=limit, unlimit=unlimit, want_vector_info=bool(args.vector), run_key=run_key)
 
     # Resuming: a previous partial run (e.g. capped by a lower -l/--limit)
@@ -192,10 +198,10 @@ def main():
         # No off-target checking means no optimal/suboptimal TSVs: nothing
         # is actually being classified as optimal vs. suboptimal, so those
         # files would only ever contain a header. Only the JSON is written.
-        subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
-        opt_name = f"{output_folder}/{run_key}_optimal_results.tsv"
+        subopt_name = f"{results_dir}/{run_key}_suboptimal_results.tsv"
+        opt_name = f"{results_dir}/{run_key}_optimal_results.tsv"
     elif resume:
-        subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
+        subopt_name = f"{results_dir}/{run_key}_suboptimal_results.tsv"
         opt_name = str(results_file)
     else:
         subopt_name, opt_name = create_outputs(run_key, output_folder, syntasirna=(construct == "syntasiRNA"))
@@ -283,7 +289,8 @@ def main():
                 "sub_r": subopt_results,
                 }
 
-        syntasirna_json(count, groups, base_output, no_offtarget=noofftarget)
+        result_data = syntasirna_json(count, groups, base_output, no_offtarget=noofftarget)
+        write_syntasirna_tsv(result_data, output_folder / f"{run_key}_psams.tsv")
 
         if args.vector:
             # Choosing sites/order/vector always happens as a separate,
