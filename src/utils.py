@@ -1,6 +1,7 @@
 import configparser
 from pprint import pprint
 import json
+import re
 import sys
 import shutil
 import subprocess
@@ -912,18 +913,32 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
     return output
 
 
+def _natural_sort_key(value: str):
+    """Splits a string into text/number chunks so "...10" sorts after
+    "...2" instead of before it (plain string sort compares digit by
+    digit)."""
+    return [int(chunk) if chunk.isdigit() else chunk.lower()
+            for chunk in re.split(r"(\d+)", value)]
+
+
 def write_syntasirna_tsv(data: dict, tsv_path) -> None:
     """
     Flatten a syntasiRNA JSON result (see syntasirna_json) into one flat,
     human-readable TSV: one row per TargetFinder hit, carrying every field
     already present in the final JSON (gene set, site, syn-tasiRNA guide,
     and each matched target's accession/description/score/coordinates/
-    strand/sequence/base pairing).
+    strand/sequence/base pairing). Rows are ordered by Target accession,
+    ascending (natural sort).
 
     Replaces the old per-site optimal/suboptimal TSVs: their Oligo1/Oligo2
     columns didn't apply to syntasiRNA, since cloning oligos combine several
     *chosen* sites in a chosen order (see clone_vector.py) rather than being
     computed per optimal site.
+
+    If `data` already carries a vector's cloning oligos (i.e. it went
+    through apply_vector_to_syntasirna_output — see clone_vector.py), that
+    info is written as a small key/value block *before* the per-hit table,
+    since it describes the whole run rather than any one row.
     """
     rows = []
     hit_keys = []  # union of hit fields, in first-seen order
@@ -942,8 +957,17 @@ def write_syntasirna_tsv(data: dict, tsv_path) -> None:
                             hit_keys.append(key)
                     rows.append((gene_set, section, site, guide, hit))
 
+    rows.sort(key=lambda row: _natural_sort_key(row[4].get("Target accession", "")))
+
     header = ["Gene_set", "Type", "Site_index", "syn-tasiRNA"] + hit_keys
     with open(tsv_path, "w") as out:
+        cloning_oligos = data.get("cloning_oligos")
+        if cloning_oligos:
+            out.write(f"Vector\t{data.get('vector', '')}\n")
+            out.write(f"Selected_sites\t{','.join(data.get('selected_sites', []))}\n")
+            out.write(f"Oligo_forward\t{cloning_oligos.get('forward', '')}\n")
+            out.write(f"Oligo_reverse\t{cloning_oligos.get('reverse', '')}\n")
+            out.write("\n")
         out.write("\t".join(header) + "\n")
         for gene_set, section, site, guide, hit in rows:
             values = [gene_set, section, site, guide] + [str(hit.get(k, "")) for k in hit_keys]

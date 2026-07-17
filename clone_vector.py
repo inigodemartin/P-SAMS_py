@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from src.utils import syn_cached_site_index, apply_vector_to_amirna_output, apply_vector_to_syntasirna_output
+from src.utils import syn_cached_site_index, apply_vector_to_amirna_output, apply_vector_to_syntasirna_output, write_syntasirna_tsv
 from src.oligo_design import AMIRNA_VECTORS, SYNTASIRNA_VECTORS, prompt_target_site, vector_filename_suffix
 
 
@@ -144,6 +144,9 @@ def main():
 
     with open(vector_output, "w") as out:
         json.dump(data, out, indent=2)
+
+    if is_syntasirna:
+        write_syntasirna_tsv(data, vector_output.with_suffix(".tsv"))
 
     print(f"Cloning oligos generated for vector '{args.vector}'.\nOutput: {vector_output}")
 
