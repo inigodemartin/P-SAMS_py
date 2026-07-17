@@ -927,8 +927,9 @@ def write_syntasirna_tsv(data: dict, tsv_path) -> None:
     human-readable TSV: one row per TargetFinder hit, carrying every field
     already present in the final JSON (gene set, site, syn-tasiRNA guide,
     and each matched target's accession/description/score/coordinates/
-    strand/sequence/base pairing). Rows are ordered by Target accession,
-    ascending (natural sort).
+    strand/sequence/base pairing). Rows keep the original gene-set/site
+    order; within a site, hits are ordered by Target accession, ascending
+    (natural sort).
 
     Replaces the old per-site optimal/suboptimal TSVs: their Oligo1/Oligo2
     columns didn't apply to syntasiRNA, since cloning oligos combine several
@@ -951,13 +952,13 @@ def write_syntasirna_tsv(data: dict, tsv_path) -> None:
             for label, entry in entries.items():
                 gene_set, site = label.rsplit(" ", 1)[-1].split(".", 1)
                 guide = entry.get("syn-tasiRNA", "")
-                for hit in (entry.get("TargetFinder") or [{}]):
+                hits = entry.get("TargetFinder") or [{}]
+                hits = sorted(hits, key=lambda hit: _natural_sort_key(hit.get("Target accession", "")))
+                for hit in hits:
                     for key in hit:
                         if key not in hit_keys:
                             hit_keys.append(key)
                     rows.append((gene_set, section, site, guide, hit))
-
-    rows.sort(key=lambda row: _natural_sort_key(row[4].get("Target accession", "")))
 
     header = ["Gene_set", "Type", "Site_index", "syn-tasiRNA"] + hit_keys
     with open(tsv_path, "w") as out:
