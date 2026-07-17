@@ -828,6 +828,23 @@ tuple
     return opt_count, subopt_count, opt_results, subopt_results
 
 
+def _extract_tf_hits(tf_raw) -> list:
+    """
+    TargetFinder's raw JSON output (from targetfinder.pl, or the
+    base_pair-built equivalent) is wrapped as {query_name: {"hits": [...]}}
+    — unwrap it to the flat hit list our JSON/TSV outputs actually store.
+    """
+    try:
+        tf_json = json.loads(tf_raw) if isinstance(tf_raw, str) else tf_raw
+        if isinstance(tf_json, dict):
+            first_key = next(iter(tf_json), None)
+            if first_key:
+                return tf_json[first_key].get("hits", [])
+    except Exception:
+        pass
+    return []
+
+
 def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None, no_offtarget=False, selected_sites=None):
     """
     Build syntasiRNA JSON output from pipeline results.
@@ -863,20 +880,7 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
         for o in range(1, group.get("opt", 0) + 1):
             entry = group["opt_r"][o]
 
-            hits = []
-
-            tf_raw = entry.get("tf", "")
-
-            try:
-                tf_json = json.loads(tf_raw) if isinstance(tf_raw, str) else tf_raw
-
-                if isinstance(tf_json, dict):
-                    first_key = next(iter(tf_json), None)
-                    if first_key:
-                        hits = tf_json[first_key].get("hits", [])
-
-            except Exception:
-                hits = []
+            hits = _extract_tf_hits(entry.get("tf", ""))
 
             block[section_key][f"{entry_label} {set_id}.{o}"] = {
                 "syn-tasiRNA": entry.get("guide", ""),
@@ -890,20 +894,7 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
             for s in range(1, group.get("sub", 0) + 1):
                 entry = group["sub_r"][s]
 
-                hits = []
-
-                tf_raw = entry.get("tf", "")
-
-                try:
-                    tf_json = json.loads(tf_raw) if isinstance(tf_raw, str) else tf_raw
-
-                    if isinstance(tf_json, dict):
-                        first_key = next(iter(tf_json), None)
-                        if first_key:
-                            hits = tf_json[first_key].get("hits", [])
-
-                except Exception:
-                    hits = []
+                hits = _extract_tf_hits(entry.get("tf", ""))
 
                 block["suboptimal"][f"suboptimal {set_id}.{s}"] = {
                     "syn-tasiRNA": entry.get("guide", ""),
@@ -1021,24 +1012,20 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_off
             "amiRNA*": opt[i]["star"],
             "Forward Oligo": opt[i]["oligo1"],
             "Reverse Oligo": opt[i]["oligo2"],
-            "TargetFinder": json.loads(opt[i]["tf"])
+            "TargetFinder": _extract_tf_hits(opt[i]["tf"])
         }
 
     # Suboptimal results (only when off-target checking is enabled)
     if not no_offtarget:
         result_count = 0
         for i in range(1, sub_count + 1):
-            try:
-                tf_json = json.loads(sub[i]["tf"])
-            except (json.JSONDecodeError, TypeError):
-                tf_json = 'No result'  # o {}
             result_count += 1
             output["suboptimal"][f"amiRNA Suboptimal Result {result_count}"] = {
                 "amiRNA": sub[i]["guide"],
                 "amiRNA*": sub[i]["star"],
                 "Forward Oligo": sub[i]["oligo1"],
                 "Reverse Oligo": sub[i]["oligo2"],
-               "TargetFinder": tf_json
+                "TargetFinder": _extract_tf_hits(sub[i]["tf"])
             }
 
     with open(output_file, "w") as out:
