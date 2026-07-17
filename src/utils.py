@@ -1073,10 +1073,13 @@ def write_amirna_tsv(data: dict, tsv_path) -> None:
                         hit_keys.append(key)
                 rows.append((section, site, guide, star, fwd, rev, hit))
 
-    header = ["Type", "Site_index", "amiRNA", "amiRNA*", "Forward Oligo", "Reverse Oligo"] + hit_keys
+    # Target accession pulled out to the third column since it's the
+    # identifying field readers scan for first; the rest keep hit_keys' order.
+    other_hit_keys = [k for k in hit_keys if k != "Target accession"]
+    header = ["Type", "Site_index", "Target accession", "amiRNA", "amiRNA*", "Forward Oligo", "Reverse Oligo"] + other_hit_keys
     with open(tsv_path, "w") as out:
         out.write("\t".join(header) + "\n")
         for section, site, guide, star, fwd, rev, hit in rows:
-            values = [section, site, guide, star, fwd, rev] + [str(hit.get(k, "")) for k in hit_keys]
+            values = [section, site, hit.get("Target accession", ""), guide, star, fwd, rev] + [str(hit.get(k, "")) for k in other_hit_keys]
             out.write("\t".join(values) + "\n")
 
