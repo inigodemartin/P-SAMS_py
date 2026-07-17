@@ -348,7 +348,8 @@ runs/Nbe01g01610_psams_output/
 ├── .cache/
 │   ├── Nbe01g01610_amiRNA_psams.json                    # cache
 │   ├── Nbe01g01610_amiRNA_optimal_results.tsv           # checkpoint (resume only)
-│   └── Nbe01g01610_amiRNA_suboptimal_results.tsv        # checkpoint (resume only)
+│   ├── Nbe01g01610_amiRNA_suboptimal_results.tsv        # checkpoint (resume only)
+│   └── tf_results_cache.json                            # shared TargetFinder cache, see below
 └── tf_results/
     ├── site_0001_TargetFinder_result.json # TargetFinder output per candidate
     └── ...
@@ -415,7 +416,8 @@ runs/Nbe01g01610_psams_output/
 │   ├── Nbe01g01610_amiRNA_suboptimal_results.tsv     # amiRNA checkpoint (resume only)
 │   ├── Nbe01g01610_syntasiRNA_psams.json             # syntasiRNA cache
 │   ├── Nbe01g01610_syntasiRNA_optimal_results.tsv    # syntasiRNA checkpoint (resume only, no Oligo1/Oligo2)
-│   └── Nbe01g01610_syntasiRNA_suboptimal_results.tsv # syntasiRNA checkpoint (resume only)
+│   ├── Nbe01g01610_syntasiRNA_suboptimal_results.tsv # syntasiRNA checkpoint (resume only)
+│   └── tf_results_cache.json                         # shared between both runs, see below
 └── tf_results/
     ├── site_0001_TargetFinder_result.json              # amiRNA (no gene-set prefix)
     ├── site_gs1_0001_TargetFinder_result.json           # syntasiRNA (gene-set prefixed)
@@ -425,6 +427,13 @@ runs/Nbe01g01610_psams_output/
 (`Nbe01g01610` here is the run name — the last path component of `-o`, since neither
 command passed `-r/--run_name` — not the `-a Nbe01g01610.7` accession; see
 [Main flags](#main-flags) below for how `-o`/`-r` naming works.)
+
+**Shared TargetFinder cache:** unlike every other file above, `.cache/tf_results_cache.json`
+is *not* namespaced by construct — TargetFinder's result for a given guide only depends on
+that guide and the background transcriptome, never on which construct designed it. Running
+`amiRNA` and then `syntasiRNA` (or vice versa) for the same gene(s) into the same `-o` reuses
+any guide already TargetFinder-tested by the first run instead of re-invoking the (slow)
+external tool for it again.
 
 `clone_vector.py -o runs/Nbe01g01610_psams_output -V ...`
 picks the right cache automatically from the vector name you pass, since

@@ -6,6 +6,7 @@ import threading
 import subprocess
 import contextlib
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 def get_tsites(ids: dict, seed: int, bg=False, conn=None, debug=False) -> list:
     """
@@ -310,10 +311,52 @@ def score_sites(gsites: list, min_site_count: int, seed: int, fb: str, debug: bo
 
 
 
-def _run_targetfinder(targetfinder, guide, mRNA_fa, query_name):
+def _load_tf_cache(cache_path: Path) -> dict:
     """
-    Run TargetFinder for a single guide and return its stdout as a list of lines.
+    Load the shared, construct-agnostic TargetFinder result cache from a
+    previous run against the same gene(s)/species in this output folder
+    (see serial_jobs). TargetFinder's result for a given guide only
+    depends on that guide and the background transcriptome, never on
+    which construct designed it — so an amiRNA run and a syntasiRNA run
+    for the same gene(s) can reuse each other's TargetFinder calls instead
+    of re-invoking the (slow) external tool for guides already tested.
     """
+    results = {}
+    if cache_path.exists():
+        try:
+            with open(cache_path) as f:
+                raw = json.load(f)
+            results = {guide: (entry["query_name"], entry["lines"]) for guide, entry in raw.items()}
+        except Exception:
+            results = {}
+    return {"path": cache_path, "lock": threading.Lock(), "results": results}
+
+
+def _tf_cache_store(tf_cache: dict, guide: str, query_name: str, lines: list) -> None:
+    with tf_cache["lock"]:
+        tf_cache["results"][guide] = (query_name, lines)
+        try:
+            raw = {g: {"query_name": qn, "lines": ln} for g, (qn, ln) in tf_cache["results"].items()}
+            with open(tf_cache["path"], "w") as f:
+                json.dump(raw, f)
+        except Exception:
+            pass  # best-effort cache; a write failure shouldn't break the run
+
+
+def _run_targetfinder(targetfinder, guide, mRNA_fa, query_name, tf_cache=None):
+    """
+    Run TargetFinder for a single guide and return its stdout as a list of
+    lines. If tf_cache is given (see _load_tf_cache) and already has a
+    result for this exact guide, that cached result is relabeled to
+    query_name and returned instead of re-invoking TargetFinder — the same
+    label-swap already used for prefetched threaded results below.
+    """
+    if tf_cache is not None:
+        cached = tf_cache["results"].get(guide)
+        if cached is not None:
+            cached_query_name, lines = cached
+            return [line.replace(cached_query_name, query_name) for line in lines]
+
     cmd = [
         targetfinder,
         "-s", guide,
@@ -322,7 +365,12 @@ def _run_targetfinder(targetfinder, guide, mRNA_fa, query_name):
         "-p", "json"
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    return result.stdout.splitlines()
+    lines = result.stdout.splitlines()
+
+    if tf_cache is not None:
+        _tf_cache_store(tf_cache, guide, query_name, lines)
+
+    return lines
 
 
 def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa, conn, bg,subopt_name, opt_name, output_folder,accession_list, tf_dir, potential_target_n,unlimit=False, fasta=False, jobs=1, limit=3, gene_set=None, existing_opt=None, existing_subopt=None, seen_guides=None, start_count=0):
@@ -456,6 +504,12 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
         n_sites = len(site_scores)
         jobs = max(1, jobs)
 
+        # Shared across constructs (see _load_tf_cache): a guide already
+        # TargetFinder-tested by e.g. an earlier amiRNA run for this same
+        # gene(s) doesn't need to be tested again for a later syntasiRNA
+        # run in the same output folder, and vice versa.
+        tf_cache = _load_tf_cache(Path(output_folder) / ".cache" / "tf_results_cache.json") if bg else None
+
         # ------------------------------------------------------------
         # When jobs > 1, run TargetFinder for several candidates ahead
         # of time in a thread pool (subprocess calls release the GIL),
@@ -476,7 +530,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                 placeholder = f"{construct}_job{i}"
                 pending[i] = (
                     placeholder,
-                    executor.submit(_run_targetfinder, targetfinder, site_scores[i]['guide'], mRNA_fa, placeholder)
+                    executor.submit(_run_targetfinder, targetfinder, site_scores[i]['guide'], mRNA_fa, placeholder, tf_cache)
                 )
 
             for i in range(min(jobs, n_sites)):
@@ -503,7 +557,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
 
                     tf_results = [line.replace(placeholder, site['name']) for line in tf_results]
                 else:
-                    tf_results = _run_targetfinder(targetfinder, site['guide'], mRNA_fa, site['name'])
+                    tf_results = _run_targetfinder(targetfinder, site['guide'], mRNA_fa, site['name'], tf_cache)
 
                 # TargetFinder prints "No results for <query>" (not JSON) when the
                 # designed guide doesn't align even to its own target above the
