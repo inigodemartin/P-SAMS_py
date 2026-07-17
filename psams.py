@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
-from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, write_syntasirna_tsv, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
+from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, write_amirna_tsv, write_syntasirna_tsv, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
 from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
@@ -97,30 +97,31 @@ def main():
     else:
         offtarget = True
 
+    # Passing -r/--run_name AND a custom -o/--output_path would be redundant
+    # (the last path component of -o already reads as a name), so a custom
+    # -o doubles as the run name for both constructs: -o runs/myrun behaves
+    # like -o runs -r myrun, producing runs/myrun_psams_output instead of
+    # nesting runs/myrun/myrun_psams_output.
+    if not args.run_name and output_path != Path("."):
+        args.run_name = output_path.name
+        output_path = output_path.parent
+
     # syntasiRNA can define several ':'-separated gene sets, each targeted
     # by its own guide(s); the output folder used to always be auto-named
     # after the first gene set alone, silently ignoring the others in its
     # name. With more than one gene set that's misleading, so a run name is
-    # required instead of guessing a folder name for the user. Passing
-    # -r/--run_name AND a custom -o/--output_path would be redundant (the
-    # last path component of -o already reads as a name), so a custom -o
-    # doubles as the run name here: -o runs/gen1_and_gen3 behaves like
-    # -o runs -r gen1_and_gen3 used to.
+    # required instead of guessing a folder name for the user.
     if construct == "syntasiRNA":
         group_source = fasta if fasta else accessions
         n_gene_sets = len(group_source.split(":"))
         if n_gene_sets > 1 and not args.run_name:
-            if output_path != Path("."):
-                args.run_name = output_path.name
-                output_path = output_path.parent
-            else:
-                print(
-                    f"ERROR: this syntasiRNA run defines {n_gene_sets} gene sets; "
-                    "the output folder can't be auto-named after just the first one.\n"
-                    "       Pass -r/--run_name, or a named -o/--output_path, to name it explicitly.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+            print(
+                f"ERROR: this syntasiRNA run defines {n_gene_sets} gene sets; "
+                "the output folder can't be auto-named after just the first one.\n"
+                "       Pass -r/--run_name, or a named -o/--output_path, to name it explicitly.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     #######################################
     # Load config and connect to database #
@@ -179,12 +180,11 @@ def main():
     visible_output = output_folder / f"{run_key}_psams.json"
 
     # check if results for given input are already performed
-    # For syntasiRNA these checkpoint TSVs live hidden in .cache/ (see
-    # create_outputs): they have no Oligo1/Oligo2 columns since cloning
-    # oligos combine several *chosen* sites in a chosen order, never one
-    # per optimal site. The user-facing equivalent is {run_key}_psams.tsv,
-    # written at the end of the syntasiRNA run from the final JSON.
-    results_dir = cache_dir if construct == "syntasiRNA" else output_folder
+    # These checkpoint TSVs live hidden in .cache/ (see create_outputs) for
+    # both constructs — they're resume/checkpoint state, not the
+    # user-facing result. The user-facing equivalent is {run_key}_psams.tsv,
+    # written at the end of the run from the final JSON.
+    results_dir = cache_dir
     results_file = results_dir / f"{run_key}_optimal_results.tsv"
     check_output(results_file, accession_list, output_folder, base_output, vector, construct, limit=limit, unlimit=unlimit, want_vector_info=bool(args.vector), run_key=run_key)
 
@@ -228,7 +228,7 @@ def main():
 
         _warn_if_insufficient(opt_count, limit, unlimit)
 
-        amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget)
+        result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget)
 
         if vector:
             for results in [opt_results, subopt_results]:
@@ -237,10 +237,12 @@ def main():
                     res['oligo1'] = fwd
                     res['oligo2'] = rev
             vector_output = output_folder / f"{run_key}_{vector_filename_suffix(vector)}_psams.json"
-            amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget)
+            result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget)
+            write_amirna_tsv(result_data, vector_output.with_suffix(".tsv"))
         else:
             # No vector selected: the cache is the only result, surface it.
             shutil.copy2(base_output, visible_output)
+            write_amirna_tsv(result_data, output_folder / f"{run_key}_psams.tsv")
 
         print("Finished running P-SAMS successfully!")
 

@@ -111,7 +111,7 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-a, --accessions`   | Gene accession(s), comma-separated. Requires `-s` |
 | `-f, --fasta`        | Alternative to `-a`: FASTA file with the sequence(s) to analyze |
 | `-s, --species`      | Species as it appears in `psams.conf`. Required if using `-a`, or if using `-f` and off-target prediction is wanted |
-| `-o, --output_path`  | Folder where results are created (defaults to the current directory). For `syntasiRNA` runs with more than one gene set and no `-r`, the last path component doubles as the run name — see below |
+| `-o, --output_path`  | Folder where results are created (defaults to the current directory). If `-r` isn't given, the last path component doubles as the run name — see below |
 | `-r, --run_name`     | Name for this run's output subfolder, instead of auto-naming it after the first accession/gene set. **Required** for `syntasiRNA` runs with more than one `:`-separated gene set, unless `-o` already supplies a name — see below |
 | `-c, --construct`    | `amiRNA` or `syntasiRNA`. If omitted, you're prompted to choose interactively |
 | `-t, --foldback`     | `eudicot` (default) or `monocot` |
@@ -186,9 +186,13 @@ Select a vector [1-4]: 1
 ```
 
 The output filename gets the chosen vector appended (e.g.
-`Nbe01g01610.7_pMDC32B-AtMIR390a-Bc_psams.json`), and the JSON itself
+`Nbe01g01610_pMDC32B-AtMIR390a-Bc_psams.json` — named after the run, i.e.
+the last path component of `-o`, since no `-r/--run_name` was given), and
+the JSON itself
 includes a top-level `"vector"` key plus vector-specific
-`"Forward Oligo"` / `"Reverse Oligo"` per candidate.
+`"Forward Oligo"` / `"Reverse Oligo"` per candidate. A flattened
+`..._pMDC32B-AtMIR390a-Bc_psams.tsv` is written alongside it, same as the
+JSON's rows, one per TargetFinder hit.
 
 **Re-running amiRNA with a different vector:** every run writes a
 vector-agnostic `{accession}_psams.json` cache alongside the vector-specific
@@ -199,7 +203,7 @@ and only (re)computes the cloning oligos for the newly selected vector:
 ```
 P-SAMS already executed for Nbe01g01610.7.
 Reusing cached results and generating cloning oligos for vector 'pMDC32B-OsMIR390-B/c'.
-Output: runs/Nbe01g01610/Nbe01g01610.7_psams_output/Nbe01g01610.7_pMDC32B-OsMIR390-Bc_psams.json
+Output: runs/Nbe01g01610_psams_output/Nbe01g01610_pMDC32B-OsMIR390-Bc_psams.json
 Exiting script.
 ```
 
@@ -241,9 +245,11 @@ python3 psams.py -a gen1,gen2:gen3,gen4 -s Nicotiana_benthamiana \
 
 Both create `runs/Nbe01g01610/gen1_and_gen3_psams_output/` (rather than a
 folder auto-named after `gen1,gen2` alone). `psams.py` exits with an error
-only if neither is given. With a single gene set, `-r/--run_name` is
-optional and only overrides the default accession-based folder name if you
-want to.
+only if neither is given. With a single gene set (and for `amiRNA`, which
+never has more than one), naming is optional: with no `-r` and a default
+`-o .`, the folder/files are auto-named after the accession(s) as usual;
+giving `-r`, or a non-default `-o` (its last path component doubles as the
+name, same mechanism as above), overrides that with the given name instead.
 
 ```
 Finished running P-SAMS successfully!
@@ -335,25 +341,29 @@ candidates — and the results are merged into the existing TSVs and JSON.
 ### Generated results
 
 ```
-runs/Nbe01g01610/Nbe01g01610.7_psams_output/
-├── Nbe01g01610.7_optimal_results.tsv               # optimal amiRNAs (no off-targets)
-├── Nbe01g01610.7_suboptimal_results.tsv            # suboptimal amiRNAs (with off-targets)
-├── Nbe01g01610.7_psams.json                        # vector-agnostic cache / final result
-├── Nbe01g01610.7_pMDC32B-OsMIR390-Bc_psams.json    # only created when -V is used
+runs/Nbe01g01610_psams_output/
+├── Nbe01g01610_psams.json                        # vector-agnostic cache / final result
+├── Nbe01g01610_psams.tsv                         # flattened from the JSON above, one row per hit
+├── Nbe01g01610_pMDC32B-OsMIR390-Bc_psams.json    # only created when -V is used
+├── Nbe01g01610_pMDC32B-OsMIR390-Bc_psams.tsv     # ditto, flattened
+├── .cache/
+│   ├── Nbe01g01610_psams.json                    # cache
+│   ├── Nbe01g01610_optimal_results.tsv           # checkpoint (resume only)
+│   └── Nbe01g01610_suboptimal_results.tsv        # checkpoint (resume only)
 └── tf_results/
     ├── site_0001_TargetFinder_result.json # TargetFinder output per candidate
     └── ...
 ```
 
-`syntasiRNA` runs don't get an `_optimal_results.tsv`/`_suboptimal_results.tsv`
-pair: unlike `amiRNA`, a syntasiRNA candidate's cloning oligos aren't a
-per-site thing (they combine several *chosen* sites in a chosen order, see
-`clone_vector.py`), so a table with one oligo pair per optimal site wouldn't
-mean anything. Instead, `syntasiRNA` writes `{run_key}_psams.tsv`: every
-gene set/site/guide and every TargetFinder hit already present in the final
-JSON, flattened into one row per hit — `Gene_set` and `Site_index` together
-give the same `geneset.site` label used everywhere else (e.g. `1`/`2` →
-`1.2`).
+Both constructs share the same layout: the optimal/suboptimal TSVs are
+internal checkpoint state, used only to resume an interrupted run, so they
+live hidden in `.cache/` rather than next to the user-facing result.
+`{run_key}_psams.tsv` (and, for `amiRNA`, its `-V` counterpart) is the
+actual user-facing table — every result and every TargetFinder hit already
+present in the final JSON, flattened into one row per hit. For
+`syntasiRNA`, `Gene_set` and `Site_index` together give the `geneset.site`
+label used everywhere else (e.g. `1`/`2` → `1.2`); `amiRNA` has no gene
+sets, just `Site_index`.
 
 If a run finds no optimal sites at all, or fewer than the requested
 `-l/--limit` (and `-u/--unlimit` wasn't used), a `WARNING:` line is printed
@@ -379,14 +389,14 @@ vector-specific file without redoing the (slow) TargetFinder search.
 
 ### Running amiRNA and syntasiRNA into the same output folder
 
-`-o` is keyed only by accession(s), not by construct, so pointing `amiRNA`
-and `syntasiRNA` runs of the same gene(s) at the same `-o` puts both inside
-one shared `..._psams_output/` folder — this is intentional, e.g. to keep
-every design explored for a gene in one place. Every file that's specific
-to one construct is namespaced so the two runs never collide or overwrite
-each other: `amiRNA` keeps its original, unsuffixed filenames (so runs from
-before this existed are still picked up as already-computed), and
-`syntasiRNA` files get a `_syntasiRNA` suffix.
+`-o`/run naming is keyed only by accession(s) or run name, not by construct,
+so pointing `amiRNA` and `syntasiRNA` runs of the same gene(s) at the same
+`-o` puts both inside one shared `..._psams_output/` folder — this is
+intentional, e.g. to keep every design explored for a gene in one place.
+Every file that's specific to one construct is namespaced so the two runs
+never collide or overwrite each other: `amiRNA` keeps its original,
+unsuffixed filenames (so runs from before this existed are still picked up
+as already-computed), and `syntasiRNA` files get a `_syntasiRNA` suffix.
 
 ```bash
 python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -c amiRNA
@@ -394,24 +404,29 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 ```
 
 ```
-runs/Nbe01g01610/Nbe01g01610.7_psams_output/
-├── Nbe01g01610.7_optimal_results.tsv                   # amiRNA
-├── Nbe01g01610.7_suboptimal_results.tsv                # amiRNA
-├── Nbe01g01610.7_psams.json                            # amiRNA
-├── Nbe01g01610.7_syntasiRNA_psams.json                 # syntasiRNA
-├── Nbe01g01610.7_syntasiRNA_psams.tsv                  # syntasiRNA, flattened from the JSON above
+runs/Nbe01g01610_psams_output/
+├── Nbe01g01610_psams.json                            # amiRNA
+├── Nbe01g01610_psams.tsv                             # amiRNA, flattened from the JSON above
+├── Nbe01g01610_syntasiRNA_psams.json                 # syntasiRNA
+├── Nbe01g01610_syntasiRNA_psams.tsv                  # syntasiRNA, flattened from the JSON above
 ├── .cache/
-│   ├── Nbe01g01610.7_psams.json                        # amiRNA cache
-│   ├── Nbe01g01610.7_syntasiRNA_psams.json             # syntasiRNA cache
-│   ├── Nbe01g01610.7_syntasiRNA_optimal_results.tsv    # syntasiRNA checkpoint (resume only, no Oligo1/Oligo2)
-│   └── Nbe01g01610.7_syntasiRNA_suboptimal_results.tsv # syntasiRNA checkpoint (resume only)
+│   ├── Nbe01g01610_psams.json                        # amiRNA cache
+│   ├── Nbe01g01610_optimal_results.tsv               # amiRNA checkpoint (resume only)
+│   ├── Nbe01g01610_suboptimal_results.tsv            # amiRNA checkpoint (resume only)
+│   ├── Nbe01g01610_syntasiRNA_psams.json             # syntasiRNA cache
+│   ├── Nbe01g01610_syntasiRNA_optimal_results.tsv    # syntasiRNA checkpoint (resume only, no Oligo1/Oligo2)
+│   └── Nbe01g01610_syntasiRNA_suboptimal_results.tsv # syntasiRNA checkpoint (resume only)
 └── tf_results/
     ├── site_0001_TargetFinder_result.json              # amiRNA (no gene-set prefix)
     ├── site_gs1_0001_TargetFinder_result.json           # syntasiRNA (gene-set prefixed)
     └── ...
 ```
 
-`clone_vector.py -o runs/Nbe01g01610/Nbe01g01610.7_psams_output -V ...`
+(`Nbe01g01610` here is the run name — the last path component of `-o`, since neither
+command passed `-r/--run_name` — not the `-a Nbe01g01610.7` accession; see
+[Main flags](#main-flags) below for how `-o`/`-r` naming works.)
+
+`clone_vector.py -o runs/Nbe01g01610_psams_output -V ...`
 picks the right cache automatically from the vector name you pass, since
 amiRNA and syntasiRNA vector names never overlap (see the tables above).
 

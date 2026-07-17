@@ -25,9 +25,10 @@ def parse_args():
     parser.add_argument("-f", "--fasta",help="FASTA-formatted sequence. Not used if -a is set.")
     parser.add_argument("-a", "--accessions",help="Gene accession(s). Comma-separated list. Not used if -f is set.")
     parser.add_argument("-s", "--species",help="Species. Required if -a is set.")
-    parser.add_argument("-o", "--output_path",default=".",help="Output folder path. For syntasiRNA runs with more "
-             "than one ':'-separated gene set, if -r/--run_name is not set, the last path component doubles as "
-             "the run name (e.g. -o runs/gen1_and_gen3 behaves like -o runs -r gen1_and_gen3).")
+    parser.add_argument("-o", "--output_path",default=".",help="Output folder path. If -r/--run_name is not set, "
+             "the last path component doubles as the run name (e.g. -o runs/myrun behaves like "
+             "-o runs -r myrun). Required for syntasiRNA runs with more than one ':'-separated gene set, "
+             "unless -r/--run_name is given instead.")
     parser.add_argument("-r", "--run_name",help="Name for this run's output subfolder, instead of auto-naming it "
              "after the first accession/gene set. Required for syntasiRNA runs with more than one "
              "':'-separated gene set, unless -o/--output_path already supplies a name (see -o).")

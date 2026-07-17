@@ -271,19 +271,26 @@ def create_outputs(run_key, output_folder, syntasirna=False):
     a run progresses (see serial_jobs), used to resume interrupted runs and
     to detect already-computed ones (load_resume_state / check_output).
 
-    For syntasiRNA these live hidden in .cache/ instead of next to the
-    user-facing results, and never have Oligo1/Oligo2 columns: cloning
-    oligos for syntasiRNA combine several *chosen* sites in a chosen order
-    (see clone_vector.py) — there's no such thing as a per-site oligo pair,
-    so a table with one wouldn't mean anything. The user-facing equivalent
-    is the {run_key}_psams.tsv written at the end of the run (see
-    write_syntasirna_tsv), flattened straight from the final JSON.
+    These live hidden in .cache/ instead of next to the user-facing
+    results, for both constructs: they're internal checkpoint state, not
+    the result to hand to the user. The user-facing equivalent is the
+    {run_key}_psams.tsv written at the end of the run (see
+    write_amirna_tsv / write_syntasirna_tsv), flattened straight from the
+    final JSON.
+
+    syntasiRNA's checkpoint never has Oligo1/Oligo2 columns: cloning oligos
+    for syntasiRNA combine several *chosen* sites in a chosen order (see
+    clone_vector.py) — there's no such thing as a per-site oligo pair, so a
+    table with one wouldn't mean anything. amiRNA's oligo pair is the
+    foldback hairpin insert for that one guide, meaningful per site, so it
+    keeps its Oligo1/Oligo2 columns.
     """
+    cache_dir = Path(output_folder) / ".cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    subopt_name = cache_dir / f"{run_key}_suboptimal_results.tsv"
+    opt_name = cache_dir / f"{run_key}_optimal_results.tsv"
+
     if syntasirna:
-        cache_dir = Path(output_folder) / ".cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        subopt_name = cache_dir / f"{run_key}_suboptimal_results.tsv"
-        opt_name = cache_dir / f"{run_key}_optimal_results.tsv"
         # syntasiRNA runs may cover several gene sets writing into this
         # same file (one call per gene set); Gene_set identifies which
         # gene set a row belongs to, so results can be addressed as
@@ -291,8 +298,6 @@ def create_outputs(run_key, output_folder, syntasirna=False):
         subopt_header = 'Gene_set\tSite_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
         opt_header = 'Gene_set\tSite_index\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
     else:
-        subopt_name = f"{output_folder}/{run_key}_suboptimal_results.tsv"
-        opt_name = f"{output_folder}/{run_key}_optimal_results.tsv"
         subopt_header = 'Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
         opt_header = 'Site_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
 
@@ -535,6 +540,7 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
         vector_output = output_folder / f"{run_key}_{vector_filename_suffix(vector)}_psams.json"
         with open(vector_output, "w") as out:
             json.dump(data, out, indent=2)
+        write_amirna_tsv(data, vector_output.with_suffix(".tsv"))
         print(
             f"P-SAMS already executed for {'_'.join(accession_list)}.\n"
             f"Reusing cached results and generating cloning oligos for vector '{vector}'.\n"
@@ -1037,4 +1043,53 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_off
 
     with open(output_file, "w") as out:
         json.dump(output, out, indent=2)
+
+    return output
+
+
+def write_amirna_tsv(data: dict, tsv_path) -> None:
+    """
+    Flatten an amiRNA JSON result (see amirna_json) into one flat,
+    human-readable TSV: one row per TargetFinder hit, carrying the guide/
+    star/cloning-oligo fields for that result plus every matched target's
+    accession/description/score/coordinates/strand/sequence/base pairing.
+    Rows keep the original result order; within a result, hits are ordered
+    by Target accession, ascending (natural sort).
+
+    Unlike syntasiRNA, amiRNA's Forward/Reverse Oligo are meaningful per
+    result (the foldback hairpin insert for that one guide, or — once a
+    vector is chosen — that guide's vector-specific cloning oligos), so
+    they're kept as regular columns rather than a separate header block.
+    """
+    rows = []
+    hit_keys = []  # union of hit fields, in first-seen order
+
+    for section in ("results", "optimal", "suboptimal"):
+        entries = data.get(section)
+        if not entries:
+            continue
+        for label, entry in entries.items():
+            site = label.rsplit(" ", 1)[-1]
+            guide = entry.get("amiRNA", "")
+            star = entry.get("amiRNA*", "")
+            fwd = entry.get("Forward Oligo", "")
+            rev = entry.get("Reverse Oligo", "")
+            hits = entry.get("TargetFinder")
+            # amirna_json stores the string "No result" here when a cached
+            # candidate's TargetFinder JSON failed to parse — not a real hit.
+            if not isinstance(hits, list) or not hits:
+                hits = [{}]
+            hits = sorted(hits, key=lambda hit: _natural_sort_key(hit.get("Target accession", "")))
+            for hit in hits:
+                for key in hit:
+                    if key not in hit_keys:
+                        hit_keys.append(key)
+                rows.append((section, site, guide, star, fwd, rev, hit))
+
+    header = ["Type", "Site_index", "amiRNA", "amiRNA*", "Forward Oligo", "Reverse Oligo"] + hit_keys
+    with open(tsv_path, "w") as out:
+        out.write("\t".join(header) + "\n")
+        for section, site, guide, star, fwd, rev, hit in rows:
+            values = [section, site, guide, star, fwd, rev] + [str(hit.get(k, "")) for k in hit_keys]
+            out.write("\t".join(values) + "\n")
 
