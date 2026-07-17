@@ -185,14 +185,13 @@ Available cloning vectors:
 Select a vector [1-4]: 1
 ```
 
-The output filename gets the chosen vector appended (e.g.
-`Nbe01g01610_pMDC32B-AtMIR390a-Bc_psams.json` — named after the run, i.e.
-the last path component of `-o`, since no `-r/--run_name` was given), and
-the JSON itself
-includes a top-level `"vector"` key plus vector-specific
-`"Forward Oligo"` / `"Reverse Oligo"` per candidate. A flattened
-`..._pMDC32B-AtMIR390a-Bc_psams.tsv` is written alongside it, same as the
-JSON's rows, one per TargetFinder hit.
+The output filename gets an `_amiRNA` construct tag plus the chosen vector
+appended (e.g. `Nbe01g01610_amiRNA_pMDC32B-AtMIR390a-Bc_psams.json` —
+`Nbe01g01610` is the run name, i.e. the last path component of `-o`, since
+no `-r/--run_name` was given), and the JSON itself includes a top-level
+`"vector"` key plus vector-specific `"Forward Oligo"` / `"Reverse Oligo"`
+per candidate. A flattened `..._pMDC32B-AtMIR390a-Bc_psams.tsv` is written
+alongside it, same as the JSON's rows, one per TargetFinder hit.
 
 **Re-running amiRNA with a different vector:** every run writes a
 vector-agnostic `{accession}_psams.json` cache alongside the vector-specific
@@ -203,7 +202,7 @@ and only (re)computes the cloning oligos for the newly selected vector:
 ```
 P-SAMS already executed for Nbe01g01610.7.
 Reusing cached results and generating cloning oligos for vector 'pMDC32B-OsMIR390-B/c'.
-Output: runs/Nbe01g01610_psams_output/Nbe01g01610_pMDC32B-OsMIR390-Bc_psams.json
+Output: runs/Nbe01g01610_psams_output/Nbe01g01610_amiRNA_pMDC32B-OsMIR390-Bc_psams.json
 Exiting script.
 ```
 
@@ -342,14 +341,14 @@ candidates — and the results are merged into the existing TSVs and JSON.
 
 ```
 runs/Nbe01g01610_psams_output/
-├── Nbe01g01610_psams.json                        # vector-agnostic cache / final result
-├── Nbe01g01610_psams.tsv                         # flattened from the JSON above, one row per hit
-├── Nbe01g01610_pMDC32B-OsMIR390-Bc_psams.json    # only created when -V is used
-├── Nbe01g01610_pMDC32B-OsMIR390-Bc_psams.tsv     # ditto, flattened
+├── Nbe01g01610_amiRNA_psams.json                        # vector-agnostic cache / final result
+├── Nbe01g01610_amiRNA_psams.tsv                         # flattened from the JSON above, one row per hit
+├── Nbe01g01610_amiRNA_pMDC32B-OsMIR390-Bc_psams.json    # only created when -V is used
+├── Nbe01g01610_amiRNA_pMDC32B-OsMIR390-Bc_psams.tsv     # ditto, flattened
 ├── .cache/
-│   ├── Nbe01g01610_psams.json                    # cache
-│   ├── Nbe01g01610_optimal_results.tsv           # checkpoint (resume only)
-│   └── Nbe01g01610_suboptimal_results.tsv        # checkpoint (resume only)
+│   ├── Nbe01g01610_amiRNA_psams.json                    # cache
+│   ├── Nbe01g01610_amiRNA_optimal_results.tsv           # checkpoint (resume only)
+│   └── Nbe01g01610_amiRNA_suboptimal_results.tsv        # checkpoint (resume only)
 └── tf_results/
     ├── site_0001_TargetFinder_result.json # TargetFinder output per candidate
     └── ...
@@ -393,10 +392,11 @@ vector-specific file without redoing the (slow) TargetFinder search.
 so pointing `amiRNA` and `syntasiRNA` runs of the same gene(s) at the same
 `-o` puts both inside one shared `..._psams_output/` folder — this is
 intentional, e.g. to keep every design explored for a gene in one place.
-Every file that's specific to one construct is namespaced so the two runs
-never collide or overwrite each other: `amiRNA` keeps its original,
-unsuffixed filenames (so runs from before this existed are still picked up
-as already-computed), and `syntasiRNA` files get a `_syntasiRNA` suffix.
+Every file that's specific to one construct is namespaced with a
+`_amiRNA`/`_syntasiRNA` suffix so the two runs never collide or overwrite
+each other, and which construct a given file belongs to is clear from its
+name alone (runs from before this suffix existed on `amiRNA` files won't be
+recognized as already-computed and will re-run once).
 
 ```bash
 python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -c amiRNA
@@ -405,14 +405,14 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 
 ```
 runs/Nbe01g01610_psams_output/
-├── Nbe01g01610_psams.json                            # amiRNA
-├── Nbe01g01610_psams.tsv                             # amiRNA, flattened from the JSON above
+├── Nbe01g01610_amiRNA_psams.json                     # amiRNA
+├── Nbe01g01610_amiRNA_psams.tsv                      # amiRNA, flattened from the JSON above
 ├── Nbe01g01610_syntasiRNA_psams.json                 # syntasiRNA
 ├── Nbe01g01610_syntasiRNA_psams.tsv                  # syntasiRNA, flattened from the JSON above
 ├── .cache/
-│   ├── Nbe01g01610_psams.json                        # amiRNA cache
-│   ├── Nbe01g01610_optimal_results.tsv               # amiRNA checkpoint (resume only)
-│   ├── Nbe01g01610_suboptimal_results.tsv            # amiRNA checkpoint (resume only)
+│   ├── Nbe01g01610_amiRNA_psams.json                 # amiRNA cache
+│   ├── Nbe01g01610_amiRNA_optimal_results.tsv        # amiRNA checkpoint (resume only)
+│   ├── Nbe01g01610_amiRNA_suboptimal_results.tsv     # amiRNA checkpoint (resume only)
 │   ├── Nbe01g01610_syntasiRNA_psams.json             # syntasiRNA cache
 │   ├── Nbe01g01610_syntasiRNA_optimal_results.tsv    # syntasiRNA checkpoint (resume only, no Oligo1/Oligo2)
 │   └── Nbe01g01610_syntasiRNA_suboptimal_results.tsv # syntasiRNA checkpoint (resume only)

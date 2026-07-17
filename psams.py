@@ -156,9 +156,10 @@ def main():
     # same output folder: every construct-specific file below is keyed off
     # run_key, not just accession_key, so a syntasiRNA run never collides
     # with (or gets misread as) a previous amiRNA run's cache/results, and
-    # vice versa. amiRNA keeps the original, unsuffixed naming so runs from
-    # before this fix are still recognized as already-computed.
-    run_key = accession_key if construct == "amiRNA" else f"{accession_key}_{construct}"
+    # vice versa. Both constructs get a suffix so filenames alone say which
+    # is which at a glance (older amiRNA runs from before this suffix
+    # existed won't be recognized as already-computed and will re-run once).
+    run_key = f"{accession_key}_{construct}"
 
     # TargetFinder only runs when off-target checking is enabled, so its
     # per-site result folder is pointless (and never written to) in -n mode.
