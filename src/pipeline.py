@@ -512,7 +512,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                     continue
 
                 off_targets, on_targets, json_data, offtarget_list = off_target_check(
-                    site, tf_results, conn
+                    site, tf_results, conn, construct
                 )
 
                 site['offtarget_list'] = offtarget_list

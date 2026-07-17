@@ -554,7 +554,7 @@ def check_output(results_file, accession_list, output_folder, base_output=None, 
 
 
 
-def off_target_check(site: dict, tf_results: list, conn) -> tuple:
+def off_target_check(site: dict, tf_results: list, conn, construct: str = "amiRNA") -> tuple:
     """
     Use TargetFinder output to classify on-targets and off-targets.
 
@@ -566,6 +566,12 @@ def off_target_check(site: dict, tf_results: list, conn) -> tuple:
         Lines of output from TargetFinder
     conn : sqlite3 connection
         Database connection to annotation table
+    construct : str
+        "amiRNA" or "syntasiRNA". TargetFinder/targetfinder.pl always
+        labels the guide sequence line "amiRNA sequence" regardless of
+        construct (it predates syntasiRNA support and isn't construct-
+        aware); relabel it here to match the actual construct instead of
+        patching the vendored Perl script.
 
     Returns
     -------
@@ -583,6 +589,8 @@ def off_target_check(site: dict, tf_results: list, conn) -> tuple:
     for line in tf_results:
 
         line = line.strip()
+        if '"amiRNA sequence"' in line and construct != "amiRNA":
+            line = line.replace('"amiRNA sequence"', f'"{construct} sequence"')
         json_lines.append(line)
 
         if "Target accession" in line:
