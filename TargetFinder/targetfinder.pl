@@ -671,7 +671,7 @@ sub print_json {
 	
 	# Print results
 	my @hits;
-	my $query = $targets[0]->{'query_name'};
+	my $query = json_escape($targets[0]->{'query_name'});
 	print "{\n";
 	print '  "'.$query.'": {'."\n";
 	print '    "hits" : ['."\n";
@@ -684,13 +684,13 @@ sub print_json {
 		$target->{'homology_string'} =~ s/ /\&nbsp/g;
 		
 		$json .= '      {'."\n";
-		$json .= '        "Target accession": "'.$target->{'hit_accession'}.'",'."\n";
-		$json .= '        "Score": "'.$target->{'score'}.'",'."\n";
-		$json .= '        "Coordinates": "'.$target->{'target_start'}.'-'.$target->{'target_end'}.'",'."\n";
-		$json .= '        "Strand": "'.$target->{'target_strand'}.'",'."\n";
-		$json .= '        "Target sequence": "'.$target->{'target_seq'}.'",'."\n";
-		$json .= '        "Base pairing": "'.$target->{'homology_string'}.'",'."\n";
-		$json .= '        "amiRNA sequence": "'.$target->{'miR_seq'}.'"'."\n";
+		$json .= '        "Target accession": "'.json_escape($target->{'hit_accession'}).'",'."\n";
+		$json .= '        "Score": "'.json_escape($target->{'score'}).'",'."\n";
+		$json .= '        "Coordinates": "'.json_escape($target->{'target_start'}).'-'.json_escape($target->{'target_end'}).'",'."\n";
+		$json .= '        "Strand": "'.json_escape($target->{'target_strand'}).'",'."\n";
+		$json .= '        "Target sequence": "'.json_escape($target->{'target_seq'}).'",'."\n";
+		$json .= '        "Base pairing": "'.json_escape($target->{'homology_string'}).'",'."\n";
+		$json .= '        "amiRNA sequence": "'.json_escape($target->{'miR_seq'}).'"'."\n";
 		#$json .= '        "query_name": "'.$target->{'query_name'}.'"'."\n";
 		$json .= '      }';
 		push @hits, $json;
@@ -779,6 +779,19 @@ sub shell_quote {
 	return "''" unless (defined $str && length $str);
 	$str =~ s/'/'\\''/g;
 	return "'$str'";
+}
+
+sub json_escape {
+	# Escape a value for safe inclusion inside a JSON string literal.
+	# Backslashes must be handled first.
+	my $str = shift;
+	return '' unless (defined $str);
+	$str =~ s/\\/\\\\/g;
+	$str =~ s/"/\\"/g;
+	$str =~ s/\r/\\r/g;
+	$str =~ s/\n/\\n/g;
+	$str =~ s/\t/\\t/g;
+	return $str;
 }
 
 ################################################################################
