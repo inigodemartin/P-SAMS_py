@@ -584,7 +584,7 @@ def off_target_check(site: dict, tf_results: list, conn, construct: str = "amiRN
     tuple
         (offCount, onCount, json_lines)
     """
-    from html import unescape, escape
+    from html import unescape
     off_target_list = []
     off_count = 0
     on_count = 0
@@ -620,9 +620,8 @@ def off_target_check(site: dict, tf_results: list, conn, construct: str = "amiRN
 
                 if desc_value:
                     desc = unescape(desc_value)
-                    desc = escape(desc)
                     desc = desc.replace(";", "")
-                    json_lines.append(f'        "Target description": "{desc}",')
+                    json_lines.append(f'        "Target description": {json.dumps(desc)},')
                 else:
                     json_lines.append('        "Target description": "unknown",')
             else:
