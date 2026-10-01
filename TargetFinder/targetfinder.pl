@@ -260,7 +260,10 @@ sub fasta {
 	my $input = shift;
 	my $db = shift;
 	my @output;
-	open FASTA, "$fasta -n -H -Q -f -16 -r +15/-10 -g -10 -w 100 -W 25 -E 100000 -i -U -T $threads $input $db 1 2> /dev/null |";
+	my $fasta_q = shell_quote($fasta);
+	my $input_q = shell_quote($input);
+	my $db_q = shell_quote($db);
+	open FASTA, "$fasta_q -n -H -Q -f -16 -r +15/-10 -g -10 -w 100 -W 25 -E 100000 -i -U -T $threads $input_q $db_q 1 2> /dev/null |";
 	while (<FASTA>) {
 		print LOG $_ if (DEBUG);
 		push (@output, $_);
@@ -767,6 +770,15 @@ sub var_error {
 	print STDERR "         -h           Print this menu\n";
 	print STDERR "\n\n";
 	exit 1;
+}
+
+sub shell_quote {
+	# Wrap a path in single quotes so spaces, parentheses and other shell
+	# metacharacters survive the command string passed to open().
+	my $str = shift;
+	return "''" unless (defined $str && length $str);
+	$str =~ s/'/'\\''/g;
+	return "'$str'";
 }
 
 ################################################################################
