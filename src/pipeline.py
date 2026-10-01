@@ -609,7 +609,7 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, mRNA_fa,
                         new_json.append(",\n".join(insert) + ',')
                         new_json.extend(json_data[3:])
 
-                        site['tf'] = new_json
+                        site['tf'] = "\n".join(new_json)
 
                         subopt.append({
                             'off_targets': off_targets,
