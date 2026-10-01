@@ -350,27 +350,44 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
 
     def _load_tf(count):
         path = Path(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json")
-        return path.read_text() if path.exists() else ""
+        if not path.exists():
+            return None
+        text = path.read_text()
+        try:
+            json.loads(text)
+        except ValueError:
+            # Empty or truncated cache (the previous run died right after
+            # the file was opened in "w" mode). Report it as missing so the
+            # candidate is sent to TargetFinder again instead of resuming
+            # with an unusable TargetFinder result.
+            return None
+        return text
 
     for row in _rows(opt_name):
         count = int(row["Site_index"])
         start_count = max(start_count, count)
+        tf = _load_tf(count)
+        if tf is None:
+            continue
         opt.append({
             'guide': row['Guide'], 'star': row['Star'],
             # syntasiRNA checkpoint rows have no Oligo1/Oligo2 (see
             # create_outputs) — unused downstream for that construct anyway.
             'oligo1': row.get('Oligo1', ''), 'oligo2': row.get('Oligo2', ''),
-            'tf': _load_tf(count),
+            'tf': tf,
         })
         seen_guides.add(row['Guide'])
 
     for row in _rows(subopt_name):
         count = int(row["Site_index"])
         start_count = max(start_count, count)
+        tf = _load_tf(count)
+        if tf is None:
+            continue
         site = {
             'guide': row['Guide'], 'star': row['Star'],
             'oligo1': row.get('Oligo1', ''), 'oligo2': row.get('Oligo2', ''),
-            'tf': _load_tf(count),
+            'tf': tf,
         }
         subopt.append({'off_targets': int(row['Offtarget_N']), 'site': site})
         seen_guides.add(row['Guide'])
