@@ -339,14 +339,34 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
             if not header:
                 return
             cols = header.rstrip("\n").split("\t")
-            for line in fh:
+            # lineno counts from 1 for the first row after the header, so a
+            # dropped row can be pruned from the file by position (see
+            # _prune_rows) without having to match its text.
+            for lineno, line in enumerate(fh, start=1):
                 if not line.strip():
                     continue
                 values = line.rstrip("\n").split("\t")
                 row = dict(zip(cols, values))
                 if gene_set is not None and int(row.get("Gene_set", gene_set)) != gene_set:
                     continue
-                yield row
+                yield row, lineno
+
+    def _prune_rows(path, dropped):
+        """
+        Delete the rows whose cached TargetFinder result was unusable.
+
+        Those candidates are re-evaluated below and appended again under a
+        new Site_index, and serial_jobs() opens these TSVs in append mode,
+        so leaving the old rows in place would list the same guide twice —
+        once pointing at a cache that cannot be read.
+        """
+        if not dropped:
+            return
+        path = Path(path)
+        lines = path.read_text().splitlines(keepends=True)
+        header, body = lines[0], lines[1:]
+        kept = [line for n, line in enumerate(body, start=1) if n not in dropped]
+        path.write_text(header + "".join(kept))
 
     def _load_tf(count):
         path = Path(f"{tf_dir}/site_{gs_prefix}{count:04d}_TargetFinder_result.json")
@@ -363,11 +383,15 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
             return None
         return text
 
-    for row in _rows(opt_name):
+    dropped_opt = set()
+    dropped_subopt = set()
+
+    for row, lineno in _rows(opt_name):
         count = int(row["Site_index"])
         start_count = max(start_count, count)
         tf = _load_tf(count)
         if tf is None:
+            dropped_opt.add(lineno)
             continue
         opt.append({
             'guide': row['Guide'], 'star': row['Star'],
@@ -378,11 +402,12 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
         })
         seen_guides.add(row['Guide'])
 
-    for row in _rows(subopt_name):
+    for row, lineno in _rows(subopt_name):
         count = int(row["Site_index"])
         start_count = max(start_count, count)
         tf = _load_tf(count)
         if tf is None:
+            dropped_subopt.add(lineno)
             continue
         site = {
             'guide': row['Guide'], 'star': row['Star'],
@@ -391,6 +416,9 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
         }
         subopt.append({'off_targets': int(row['Offtarget_N']), 'site': site})
         seen_guides.add(row['Guide'])
+
+    _prune_rows(opt_name, dropped_opt)
+    _prune_rows(subopt_name, dropped_subopt)
 
     return opt, subopt, seen_guides, start_count
 
