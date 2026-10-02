@@ -166,6 +166,27 @@ Available vectors depend on the construct type:
 | `pMDC32B-NbmiR482aTS-B/c` | TTTA / CCGA | |
 | `pMDC32B-SlmiR482bTS-B/c` | TTTA / CCGA | |
 
+**Insert vectors** (either construct, via `clone_vector.py` only, with or
+without a previous run):
+
+| Vector | Flanks | Notes |
+|--------|--------|-------|
+| `PVX` | 20-nt homology arms | Viral vector, no restriction site |
+| `TRV` | 20-nt homology arms | Viral vector, no restriction site |
+| `pMDC32B-B/c-multimodule` | BsaI Golden Gate | The B/c backbone entered through Golden Gate |
+
+These three behave differently from every vector above. Instead of a short
+oligo pair to anneal, they produce the whole insert, to be ordered as a
+synthetic fragment — double-stranded for the viral vectors, single-stranded
+for the B/c Golden Gate entry. They also take more than one module per
+construct, so an amiRNA and a syn-tasiRNA can sit in tandem in the same
+construct. See [`clone_vector.py`](#clone_vectorpy) below.
+
+Note the name `pMDC32B-B/c-multimodule` is distinct from `pMDC32B-B/c` on
+purpose: the same backbone, but entered through BsaI Golden Gate and
+yielding an insert rather than an oligo pair, so the two must not be
+confused on the command line.
+
 **amiRNA + `-V`** works in a single command: pick a vector from the
 interactive menu, and the cloning oligos are computed automatically for
 every optimal/suboptimal result found (no manual choice needed, since
@@ -298,6 +319,8 @@ overlap between the two constructs.
 | `-V, --vector`         | Required. Cloning vector name (see the tables above) |
 | `-O, --order`          | syntasiRNA only. Ordered, comma-separated `geneset.site` selection of which optimal sites to clone (e.g. `1.1,3.2,2.1`). If omitted, you're prompted interactively (safe here — this step is always fast, no TargetFinder involved) |
 | `-T, --target-site`    | syntasiRNA only. 22-nt miRNA target site sequence, required for the `pMDC32B-B/c` vector. If omitted and needed, it's requested interactively |
+| `-M, --modules`        | Insert vectors only. Required for them. Ordered, comma-separated list of the modules to lay down, cached or typed out (see below) |
+| `-n, --name`           | Insert vectors only. Construct name, used in the exports and the output filenames. Defaults to the run's accession key, or to the vector's own default when there is no run behind the design |
 
 ```bash
 python3 clone_vector.py -o runs/Nbe01g01610/gen1_and_gen3_psams_output \
@@ -313,6 +336,71 @@ The chosen sites are cloned into the vector in the order given, and
 recorded under `"selected_sites"` in the output JSON. You don't have to
 select exactly one site per gene set — a gene set can be left out, or have
 more than one of its sites included, if that's what the construct needs.
+
+#### Building a full insert (`PVX`, `TRV`, `pMDC32B-B/c-multimodule`)
+
+For the three insert vectors, `-M/--modules` says which modules go into the
+construct and in what order. Each sequence is either addressed into the
+optimal results `psams.py` already found, exactly the way the rest of P-SAMS
+addresses them, or typed out in full — so these vectors can be designed with
+no run behind them at all.
+
+| Token | Module |
+|-------|--------|
+| `ami:N` | Optimal amiRNA result *N* from this run's cache |
+| `ami:<name>:<amiRNA>[:<amiRNA*>]` | An amiRNA typed out, 21 nt. The amiRNA\* is derived from the amiRNA when left out |
+| `syn:<target site>:<guides>` | A syn-tasiRNA module. The target site is a built-in name (`AtmiR173a`, `NbmiR482a`, `SlmiR482b`), 22 nt spelled out, or `name=<22 nt>`. `<guides>` is a `+`-joined list whose items are each a cached `geneset.site` reference, a `name=<21 nt>` pair, or bare 21 nt |
+| `mir173a[:<name>]` | The fixed AtMIR173a precursor, inserted verbatim |
+
+Cached and typed-out sequences mix freely inside one specification.
+Sequences are read as the HTML reads them: whitespace and dashes dropped,
+case ignored, `U` read as `T`, anything else refused. Lengths are checked at
+21 nt for an amiRNA, its star and each syn-tasiRNA, and 22 nt for a target
+site.
+
+From a previous run:
+
+```bash
+python3 clone_vector.py -o runs/Nbe01g01610/gen1_and_gen3_psams_output \
+    -V TRV -M "ami:1,syn:NbmiR482a:1.1+2.1" -n NbSu_hybrid
+```
+
+Standing on its own, with no run anywhere:
+
+```bash
+python3 clone_vector.py -V PVX -n PVX_amiRNA_NbSu \
+    -M "ami:amiR-NbSu:TGTATGACTCCCGGAATTCCA"
+```
+
+```
+Design generated successfully (1 module, insert 129 bp).
+Output: ./PVX_amiRNA_NbSu_PVX_amiRNA_design.json
+Output: ./PVX_amiRNA_NbSu_PVX_amiRNA_design.txt
+Output: ./PVX_amiRNA_NbSu_PVX_amiRNA_design.fasta
+Output: ./PVX_amiRNA_NbSu_PVX_amiRNA_summary.csv
+```
+
+`-o` is then only where the files are written, and defaults to the current
+directory. A hybrid construct built from cached results draws its amiRNA and
+its syn-tasiRNA modules from two separate runs, so run `psams.py` once per
+construct type into the same output folder first.
+
+Modules are laid end to end with nothing between them. The only internal
+linker is the AtTAS1c-derived spacer `TAGACCATTTA`, which sits inside a
+syn-tasiRNA module between its target site and its syn-tasiRNAs. There is no
+cap on how many modules a construct may carry.
+
+Alongside the JSON, three companion files are written for ordering and for
+record-keeping: a readable TXT report, a single-sequence FASTA, and a
+`field,value` CSV summary. All three are byte-identical to what the Oligo
+Designer Suite downloads for the same design, names included.
+
+Only the eudicot AtMIR390a foldback has a defined insert design. A run made
+with `-t monocot` builds an OsMIR390 foldback whose basal stems and star
+differ, so these vectors refuse it rather than wrapping it in the wrong
+scaffold.
+
+Always check the insert against your vector map before ordering it.
 `clone_vector.py` also works for `amiRNA` runs (just `-o` and `-V`, no
 `-O`/`-T` needed) as an alternative to re-running `psams.py -V`.
 
