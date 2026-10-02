@@ -15,6 +15,9 @@ Each test fails against the code as it was before the fix:
   3. The -f plus suboptimal-candidate branch of serial_jobs() storing the
      TargetFinder result as a list instead of joined text, which raised a
      TypeError whenever off-targets were checked.
+  4. A crash leaving a 0-byte tf_results/*.json behind, which the resume path
+     then loaded as an empty string and carried on with, making the gap
+     permanent across reruns.
 
 Run from the repository root with:  python3 test/test_pepper_bugs.py
 """
@@ -214,6 +217,82 @@ class FastaSuboptimalBranchTest(unittest.TestCase):
             cached = sorted(tf_dir.glob("*_TargetFinder_result.json"))
             self.assertTrue(cached, "no TargetFinder result file was written")
             json.loads(cached[0].read_text())
+
+
+class ResumeAfterCrashTest(unittest.TestCase):
+    """
+    A candidate whose cached TargetFinder result is unreadable has to be
+    evaluated again, and its stale row has to leave the checkpoint TSV: the
+    TSVs are reopened in append mode, so a row left behind would list the
+    same guide twice, once pointing at a cache that cannot be read.
+    """
+
+    OPT_HEADER = "Site_index\tGuide\tStar\tOligo1\tOligo2\tNames\tSeqs\n"
+    SUB_HEADER = ("Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\t"
+                  "Oligo1\tOligo2\tNames\tSeqs\n")
+
+    def _run(self, tmp, cached):
+        """cached: {site index: file contents, or None to write no file}."""
+        tf_dir = Path(tmp) / "tf_results"
+        tf_dir.mkdir()
+        opt = Path(tmp) / "opt.tsv"
+        sub = Path(tmp) / "sub.tsv"
+
+        rows = "".join(
+            f"{i}\tGUIDE{i:04d}\tSTAR{i:04d}\to1\to2\tn\ts\n" for i in cached)
+        opt.write_text(self.OPT_HEADER + rows)
+        sub.write_text(self.SUB_HEADER)
+
+        for i, text in cached.items():
+            if text is not None:
+                (tf_dir / f"site_{i:04d}_TargetFinder_result.json").write_text(text)
+
+        from src.utils import load_resume_state
+        return load_resume_state(str(tf_dir), str(opt), str(sub)), opt
+
+    def test_an_empty_cache_sends_its_candidate_back_to_targetfinder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (opt_sites, _, seen, start), _ = self._run(
+                tmp, {1: '{"ok": 1}', 2: "", 3: '{"ok": 3}'})
+
+            self.assertEqual([s["guide"] for s in opt_sites],
+                             ["GUIDE0001", "GUIDE0003"])
+            # Not marked as seen, so serial_jobs() leaves it in site_scores.
+            self.assertNotIn("GUIDE0002", seen)
+            # Numbering still continues past every row the previous run wrote.
+            self.assertEqual(start, 3)
+
+    def test_a_truncated_cache_counts_as_unusable_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (opt_sites, _, seen, _), _ = self._run(
+                tmp, {1: '{"hits": [', 2: '{"ok": 2}'})
+            self.assertEqual([s["guide"] for s in opt_sites], ["GUIDE0002"])
+            self.assertNotIn("GUIDE0001", seen)
+
+    def test_the_stale_row_is_removed_from_the_checkpoint_tsv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, opt = self._run(tmp, {1: '{"ok": 1}', 2: "", 3: '{"ok": 3}'})
+
+            lines = opt.read_text().splitlines()
+            self.assertEqual(len(lines), 3, opt.read_text())
+            self.assertNotIn("GUIDE0002", opt.read_text())
+            # The rows that were fine are untouched, header included.
+            self.assertTrue(lines[0].startswith("Site_index"))
+            self.assertIn("GUIDE0001", lines[1])
+            self.assertIn("GUIDE0003", lines[2])
+
+    def test_a_clean_resume_rewrites_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, opt = self._run(tmp, {1: '{"ok": 1}', 2: '{"ok": 2}'})
+            self.assertEqual(len(opt.read_text().splitlines()), 3)
+
+    def test_a_missing_cache_file_is_treated_the_same_way(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (opt_sites, _, seen, _), opt = self._run(
+                tmp, {1: '{"ok": 1}', 2: None})
+            self.assertEqual([s["guide"] for s in opt_sites], ["GUIDE0001"])
+            self.assertNotIn("GUIDE0002", seen)
+            self.assertNotIn("GUIDE0002", opt.read_text())
 
 
 if __name__ == "__main__":
