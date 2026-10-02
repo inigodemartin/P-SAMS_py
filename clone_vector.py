@@ -19,14 +19,19 @@ from pathlib import Path
 
 from src.utils import syn_cached_site_index, apply_vector_to_amirna_output, apply_vector_to_syntasirna_output, write_amirna_tsv, write_syntasirna_tsv
 from src.oligo_design import AMIRNA_VECTORS, SYNTASIRNA_VECTORS, prompt_target_site, vector_filename_suffix
+from src.insert_design import (INSERT_VECTORS, amirna_cached_site_index, build_insert,
+                               check_foldback, design_basename, parse_modules,
+                               spec_uses_cache, write_exports)
 
 
 def parse_args():
     ap = argparse.ArgumentParser(
         description="Generate vector-specific cloning oligos for an existing psams.py run."
     )
-    ap.add_argument("-o", "--output_folder", required=True,
-        help="The '..._psams_output' folder from a previous psams.py run.")
+    ap.add_argument("-o", "--output_folder",
+        help="The '..._psams_output' folder from a previous psams.py run. For an insert "
+             "vector whose modules are all typed out, this is just where the files are "
+             "written, and defaults to the current directory.")
     ap.add_argument("-V", "--vector", required=True,
         help="Cloning vector name (see psams.py's README for the list per construct).")
     ap.add_argument("-O", "--order",
@@ -38,6 +43,23 @@ def parse_args():
         metavar="SEQ",
         help="syntasiRNA only. 22-nt miRNA target site sequence, required for the pMDC32B-B/c "
              "vector. If omitted and needed, it will be requested interactively.")
+    ap.add_argument("-M", "--modules",
+        metavar="SPEC",
+        help="Insert vectors only (" + ", ".join(INSERT_VECTORS) + "). Ordered, comma-separated "
+             "list of the modules to lay down. Each sequence is either addressed into this "
+             "run's optimal results or typed out in full, so the vectors can be designed with "
+             "no run behind them. Tokens: 'ami:N' (cached amiRNA result N); "
+             "'ami:<name>:<21-nt amiRNA>[:<21-nt amiRNA*>]' (typed out; the amiRNA* is derived "
+             "from the amiRNA when left out); 'mir173a[:<name>]' (the fixed AtMIR173a "
+             "precursor); 'syn:<target site>:<guides>' (a syn-tasiRNA module, target site named "
+             "e.g. NbmiR482a, spelled out as 22 nt, or 'name=<22 nt>'; guides '+'-joined, each "
+             "a cached 'geneset.site' reference, a 'name=<21 nt>' pair, or bare 21 nt). "
+             "Examples: 'ami:1,syn:NbmiR482a:1.1+2.1' or "
+             "'ami:amiR-NbSu:TGTATGACTCCCGGAATTCCA'.")
+    ap.add_argument("-n", "--name",
+        help="Insert vectors only. Construct name, used in the exports and the output filenames. "
+             "Defaults to the run's accession key, or to the vector's own default when there is "
+             "no run behind the design.")
 
     args = ap.parse_args()
 
@@ -47,6 +69,17 @@ def parse_args():
         if invalid or len(ts) != 22:
             ap.error("--target-site must be a 22-nt DNA sequence (only A, C, G, T bases allowed).")
         args.target_site = ts
+
+    is_insert = args.vector in INSERT_VECTORS
+    if is_insert and not args.modules:
+        ap.error(f"--modules is required for the insert vector '{args.vector}'.")
+    if not is_insert and not args.output_folder:
+        ap.error("--output_folder is required.")
+    if args.modules and not is_insert:
+        ap.error(
+            f"--modules only applies to the insert vectors ({', '.join(INSERT_VECTORS)}); "
+            f"'{args.vector}' is cloned from an oligo pair instead."
+        )
 
     return args
 
@@ -80,6 +113,50 @@ def _find_cache_json(output_folder: Path, vector: str) -> Path:
     )
 
 
+def _load_insert_caches(output_folder: Path) -> tuple:
+    """
+    Load both of a run's cached results for an insert vector.
+
+    An insert can combine amiRNA and syn-tasiRNA modules in one construct,
+    and those come from two separate psams.py runs with a cache file each,
+    so unlike _find_cache_json there is nothing to disambiguate here: read
+    whichever of the two are present and let the module specification
+    decide what it needs.
+    """
+    cache_dir = output_folder / ".cache"
+    matches = sorted(cache_dir.glob("*_psams.json")) if cache_dir.exists() else []
+    if not matches:
+        sys.exit(f"Error: no cached results found in {cache_dir} — run psams.py on this input first.")
+
+    amirna_data = None
+    syn_data = None
+    accession_keys = []
+
+    for path in matches:
+        with open(path) as f:
+            data = json.load(f)
+
+        run_key = path.name[: -len("_psams.json")]
+        for tag in ("_syntasiRNA", "_amiRNA"):
+            if run_key.endswith(tag):
+                run_key = run_key[: -len(tag)]
+                break
+        accession_keys.append(run_key)
+
+        if "blocks" in data:
+            syn_data = data
+        else:
+            amirna_data = data
+
+    # Only the eudicot AtMIR390a foldback has a defined insert-vector design,
+    # so a monocot run must not be wrapped in these flanks (see
+    # insert_design.check_foldback). Runs cached before the field existed
+    # carry no "foldback" key and are taken at the default, eudicot.
+    check_foldback((amirna_data or {}).get("foldback"))
+
+    return amirna_data, syn_data, accession_keys[0]
+
+
 def _syntasirna_vector_output_path(output_folder: Path, accession_key: str, vector: str, new_oligos: dict) -> Path:
     """
     Pick where to write this run's syntasiRNA cloning oligos for `vector`.
@@ -111,9 +188,37 @@ def _syntasirna_vector_output_path(output_folder: Path, accession_key: str, vect
 
 def main():
     args = parse_args()
-    output_folder = Path(args.output_folder).resolve()
+    output_folder = Path(args.output_folder or ".").resolve()
     if not output_folder.exists():
         sys.exit(f"Error: output folder not found: {output_folder}")
+
+    if args.vector in INSERT_VECTORS:
+        # A specification that addresses nothing into a previous run needs no
+        # run at all: the tool then stands on its own and only needs somewhere
+        # to write.
+        if spec_uses_cache(args.modules):
+            amirna_data, syn_data, accession_key = _load_insert_caches(output_folder)
+            amirna_index = amirna_cached_site_index(amirna_data or {})
+            syn_index = syn_cached_site_index((syn_data or {}).get("blocks", []))
+        else:
+            amirna_index, syn_index, accession_key = {}, {}, None
+
+        modules = parse_modules(args.modules, amirna_index, syn_index)
+        design = build_insert(args.vector, modules, args.name or accession_key or "")
+
+        base = design_basename(design)
+        json_path = output_folder / f"{base}_design.json"
+        with open(json_path, "w") as out:
+            json.dump(design, out, indent=2)
+        written = write_exports(design, output_folder)
+
+        print(
+            f"Design generated successfully ({len(modules)} module"
+            f"{'s' if len(modules) > 1 else ''}, insert {design['insert_length']} bp)."
+        )
+        for path in [json_path] + written:
+            print(f"Output: {path}")
+        return
 
     cache_json = _find_cache_json(output_folder, args.vector)
     with open(cache_json) as f:
