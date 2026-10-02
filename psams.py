@@ -229,7 +229,7 @@ def main():
 
         _warn_if_insufficient(opt_count, limit, unlimit)
 
-        result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget)
+        result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget, foldback=foldback)
 
         if vector:
             for results in [opt_results, subopt_results]:
@@ -238,7 +238,7 @@ def main():
                     res['oligo1'] = fwd
                     res['oligo2'] = rev
             vector_output = output_folder / f"{run_key}_{vector_filename_suffix(vector)}_psams.json"
-            result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget)
+            result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget, foldback=foldback)
             write_amirna_tsv(result_data, vector_output.with_suffix(".tsv"))
         else:
             # No vector selected: the cache is the only result, surface it.

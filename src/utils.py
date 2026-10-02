@@ -1024,7 +1024,7 @@ def write_syntasirna_tsv(data: dict, tsv_path) -> None:
             out.write("\t".join(values) + "\n")
 
 
-def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_offtarget=False):
+def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_offtarget=False, foldback=None):
     """
     Builds the JSON output for amiRNA results.
 
@@ -1037,6 +1037,10 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_off
         no_offtarget (bool, optional): if True, off-target checking was
             disabled, so results are labeled generically (not optimal/
             suboptimal) and the suboptimal section is omitted
+        foldback (str, optional): 'eudicot' or 'monocot'. Recorded so a
+            later cloning step knows which foldback the cached amiRNA*
+            belongs to — the two use different basal stems, and only the
+            eudicot AtMIR390a one has a defined insert-vector design.
     """
     section_key = "results" if no_offtarget else "optimal"
     entry_label = "amiRNA Result" if no_offtarget else "amiRNA Optimal Result"
@@ -1046,6 +1050,8 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_off
         output["suboptimal"] = {}
     if vector:
         output["vector"] = vector
+    if foldback:
+        output["foldback"] = foldback
     result_count = 0
 
     # Optimal / generic results
