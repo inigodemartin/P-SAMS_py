@@ -7,11 +7,13 @@ annotation database or any network access.
 |---|---|
 | `test_pepper_bugs.py` | the four bugs Alberto reported from the pepper transcriptome |
 | `test_insert_design.py` | the full-insert vectors PVX, TRV and the B/c multimodule entry |
+| `test_multi_background.py` | screening off-targets against several transcriptomes at once |
 
 ```bash
 conda activate p-sams-py
 python3 test/test_pepper_bugs.py
 python3 test/test_insert_design.py
+python3 test/test_multi_background.py
 ```
 
 ## `test_pepper_bugs.py`
@@ -90,3 +92,39 @@ wrapped in the eudicot scaffold, both as a unit check and through
 `clone_vector.py`.
 
 Expected output: `Ran 39 tests` and `OK`.
+
+## `test_multi_background.py`
+
+Covers `-s species1,species2`: designing one guide against a pathogen gene
+and screening it against every host the pathogen infects.
+
+Like `test_pepper_bugs.py`, every input is synthetic and built in a
+temporary directory, so no transcriptome or annotation database is needed.
+Hosts are small FASTA files plus minimal `kmers`/`annotation` SQLite
+tables.
+
+What it pins down:
+
+- The seed filter querying every background, not just the first, so a seed
+  present only in the second host is still discarded.
+- A seed belonging to the input sequence itself surviving, since it is an
+  on-target.
+- A candidate clean in one host but not in the other coming out suboptimal,
+  with the off-target naming the host it was found in.
+- That same candidate being optimal when only the clean host is screened.
+- A single-host run keeping its previous output, with bare accessions and
+  no species labels on hits.
+- A guide whose target is absent from every host being optimal rather than
+  discarded, with its on-target pairing still reported. This is the case of
+  a viral gene screened against its hosts, which earlier versions threw
+  away wholesale.
+- The TargetFinder cache being keyed by guide AND background, never reusing
+  a result computed against another host, and dropping caches written
+  before multi-background support.
+- `-s` taking a list only where the target is unambiguous: refused with
+  `-a/--accessions` and with `-n/--noofftarget`.
+- The `-a/--accessions` branch keeping its old meaning, where the target
+  IS one of the searched transcripts: a candidate hitting only its own
+  target is optimal, and a guide aligning nowhere is still dropped.
+
+Expected output: `Ran 17 tests` and `OK`.

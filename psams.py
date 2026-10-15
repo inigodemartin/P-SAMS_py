@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
-from src.utils import load_config, connect_database, create_opt_subopt, amirna_json, syntasirna_json, write_amirna_tsv, write_syntasirna_tsv, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
+from src.utils import load_config, connect_backgrounds, parse_species, create_opt_subopt, amirna_json, syntasirna_json, write_amirna_tsv, write_syntasirna_tsv, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
 from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
@@ -25,13 +25,13 @@ MIN_LENGTH = 9
 
 
 
-def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs=1, limit=3, gene_set=None, existing_opt=None, existing_subopt=None, seen_guides=None, start_count=0):
+def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, backgrounds, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs=1, limit=3, gene_set=None, existing_opt=None, existing_subopt=None, seen_guides=None, start_count=0):
 
     #################################
     # Identify putative targe sites #
     #################################
 
-    t_sites = get_tsites(transcript_dict, SEED, offtarget, conn=conn) 
+    t_sites = get_tsites(transcript_dict, SEED, offtarget, backgrounds=backgrounds) 
     gsites = group_tsites(t_sites, SEED)
 
     #################################
@@ -45,7 +45,7 @@ def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRN
     ######################################
     opt, subopt = serial_jobs(
     target_count, construct, transcript_dict,
-    site_scores, TARGETFINDER, mRNA_fa, conn, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta, jobs, limit, gene_set,
+    site_scores, TARGETFINDER, backgrounds, offtarget, subopt_name, opt_name, output_folder, accession_list, tf_results, len(site_scores), unlimit, fasta, jobs, limit, gene_set,
     existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
 
 
@@ -128,7 +128,14 @@ def main():
     #######################################
 
     config = load_config(CONFIG_FILE)
-    conn, mRNA_fa = connect_database(config, species)
+    species_names = parse_species(species)
+    backgrounds = connect_backgrounds(config, species)
+
+    # -a/--accessions resolves its targets against a single registered
+    # species (enforced in parse_args), so these stay well defined; several
+    # backgrounds only ever come with -f/--fasta input.
+    conn = backgrounds[0].conn if backgrounds else None
+    mRNA_fa = backgrounds[0].mRNA_fa if backgrounds else None
 
     if fasta:
         # FASTA input: derive the naming list from the sequence IDs in the
@@ -149,6 +156,13 @@ def main():
     # create outputr folder and check if outputs already exist
     accession_key = args.run_name or '_'.join(accession_list)
     folder_suffix = "_no_offtarget" if noofftarget else ""
+
+    # Results screened against two hosts are not the same results as those
+    # screened against one, so they get their own folder instead of being
+    # mistaken for an already-completed run (see check_output). A single
+    # species keeps the folder name it has always had.
+    if len(species_names) > 1:
+        folder_suffix += "_vs_" + "+".join(species_names)
     output_folder = output_path / f"{accession_key}_psams_output{folder_suffix}"
     os.makedirs(output_folder, exist_ok=True)
 
@@ -225,7 +239,7 @@ def main():
         else:
             existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
 
-        opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
+        opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, backgrounds, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
 
         _warn_if_insufficient(opt_count, limit, unlimit)
 
@@ -263,7 +277,7 @@ def main():
                     existing_opt, existing_subopt, seen_guides, start_count = load_resume_state(tf_results, opt_name, subopt_name, gene_set=g + 1)
                 else:
                     existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, backgrounds, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
                 _warn_if_insufficient(opt_count, limit, unlimit, gene_set=g + 1)
                 groups[g] = {
                 "opt": opt_count,
@@ -283,7 +297,7 @@ def main():
                     existing_opt, existing_subopt, seen_guides, start_count = load_resume_state(tf_results, opt_name, subopt_name, gene_set=g + 1)
                 else:
                     existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
-                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, conn, mRNA_fa, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
+                opt_count, subopt_count, opt_results, subopt_results = pipeline(transcript_dict, foldback, construct, offtarget, unlimit, backgrounds, subopt_name, opt_name, output_folder, tf_results, accession_list, fasta, jobs, limit, gene_set=g + 1, existing_opt=existing_opt, existing_subopt=existing_subopt, seen_guides=seen_guides, start_count=start_count)
                 _warn_if_insufficient(opt_count, limit, unlimit, gene_set=g + 1)
                 groups[g] = {
                 "opt": opt_count,

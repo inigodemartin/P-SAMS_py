@@ -24,7 +24,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Plant Small RNA Maker Suite (P-SAMS). Artificial miRNA and syn-tasiRNA designer tool.",formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-f", "--fasta",help="FASTA-formatted sequence. Not used if -a is set.")
     parser.add_argument("-a", "--accessions",help="Gene accession(s). Comma-separated list. Not used if -f is set.")
-    parser.add_argument("-s", "--species",help="Species. Required if -a is set.")
+    parser.add_argument("-s", "--species",help="Species, as registered in psams.conf. Required if -a is set.\n"
+             "Accepts a comma-separated list of species to screen off-targets against several\n"
+             "transcriptomes at once (e.g. -s Solanum_lycopersicum,Capsicum_annuum): a candidate\n"
+             "is then only optimal when it has no off-target in any of them. Several species\n"
+             "require -f/--fasta input (see -a).")
     parser.add_argument("-o", "--output_path",default=".",help="Output folder path. If -r/--run_name is not set, "
              "the last path component doubles as the run name (e.g. -o runs/myrun behaves like "
              "-o runs -r myrun). Required for syntasiRNA runs with more than one ':'-separated gene set, "
@@ -56,6 +60,21 @@ def parse_args():
 
     if args.accessions and not args.species:
         parser.error("A species name was not provided!")
+
+    # Screening against several transcriptomes is meant for a target gene
+    # that belongs to none of them (a pathogen infecting several hosts), so
+    # the target sequence comes in as FASTA. With -a the target is itself a
+    # transcript of one registered species, and which species owns the
+    # accession would be ambiguous.
+    species_count = len([n for n in (args.species or "").split(",") if n.strip()])
+
+    if species_count > 1 and args.accessions:
+        parser.error("-a/--accessions takes a single species. Several species are only "
+                     "supported with -f/--fasta input.")
+
+    if species_count > 1 and args.noofftarget:
+        parser.error("-n/--noofftarget disables off-target prediction, so screening against "
+                     "several species has no effect. Pass a single species, or drop -n.")
 
     if args.fasta and not args.species and not args.noofftarget:
         parser.error("Off-target prediction with -f requires -s/--species (or use -n/--noofftarget to disable it).")

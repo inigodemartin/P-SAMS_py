@@ -8,6 +8,7 @@ import subprocess
 import time
 import threading
 import sqlite3
+from collections import namedtuple
 from pathlib import Path
 
 from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix, prompt_syn_order, print_syn_vector_instructions
@@ -29,21 +30,45 @@ def load_config(config_file):
 #               DATABASE CONNECTION                    #
 ########################################################
 
-def connect_database(config, species):
-    """
-    Connect to SQLite database using config values.
-    """
+Background = namedtuple("Background", "name conn mRNA_fa")
 
+
+def parse_species(species):
+    """
+    Split a -s/--species value into its individual species names.
+
+    A run may be screened against more than one background transcriptome
+    (see connect_backgrounds), given as a comma-separated list.
+    """
     if not species:
-        return None, None
+        return []
+    return [name.strip() for name in species.split(',') if name.strip()]
 
-    mRNA_fa = config[species]['mRNA']
-    db_path = config[species]['sql']
 
-    connection = sqlite3.connect(db_path)
-    connection.row_factory = sqlite3.Row
+def connect_backgrounds(config, species):
+    """
+    Connect to every background transcriptome this run screens against.
 
-    return connection, mRNA_fa
+    `species` is a comma-separated list of species names, each a section of
+    psams.conf. Returns one Background (name, open connection, mRNA FASTA
+    path) per species, in the order given; an empty list when no species
+    was provided (-f together with -n/--noofftarget).
+
+    Several backgrounds are what makes a guide designed against a pathogen
+    gene checkable against every host it can infect at once: a candidate is
+    only optimal when it has no off-target in ANY of them.
+    """
+    backgrounds = []
+
+    for name in parse_species(species):
+        if name not in config:
+            sys.exit(f"Error: species '{name}' is not registered in psams.conf.")
+
+        connection = sqlite3.connect(config[name]['sql'])
+        connection.row_factory = sqlite3.Row
+        backgrounds.append(Background(name, connection, config[name]['mRNA']))
+
+    return backgrounds
 
 
 def design_guide_RNA(site: dict) -> str:

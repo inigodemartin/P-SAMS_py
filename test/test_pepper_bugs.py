@@ -163,6 +163,7 @@ class FastaSuboptimalBranchTest(unittest.TestCase):
 
     def test_fasta_mode_suboptimal_candidate_writes_valid_json(self):
         from src.pipeline import serial_jobs
+        from src.utils import Background
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -195,8 +196,7 @@ class FastaSuboptimalBranchTest(unittest.TestCase):
                 ids={"TX00001": TRANSCRIPT},
                 site_scores=[site],
                 targetfinder=str(TARGETFINDER),
-                mRNA_fa=str(db),
-                conn=conn,
+                backgrounds=[Background("test_species", conn, str(db))],
                 bg=True,
                 subopt_name=str(tmp / "subopt.tsv"),
                 opt_name=str(tmp / "opt.tsv"),
