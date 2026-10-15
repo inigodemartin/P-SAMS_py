@@ -1,173 +1,66 @@
 flowchart TD
-    subgraph mod00["Module 0 — arguments and construct"]
+    subgraph m1["Input and checks"]
         direction TB
-        select_construct["select_construct"]
-        parse_args["parse_args"]
-        select_vector["select_vector"]
-        d_construct[/"construct"/]
-        d_vector[/"vector"/]
+        parse_args["Argument check<br/><small>parse_args()</small>"]
+        connect_backgrounds["Open each species<br/><small>per species</small>"]
+        check_output["Already computed?<br/><small>check_output()</small>"]
+        build_fg_index_fasta["Read target sequences<br/><small>build_fg_index_fasta()</small>"]
     end
-    subgraph mod01["Module 1 — background transcriptomes"]
+    subgraph m2["Candidate sites"]
         direction TB
-        load_config["load_config"]
-        parse_species["parse_species"]
-        connect_backgrounds["connect_backgrounds"]
-        get_transcripts["get_transcripts"]
-        check_accessions["check_accessions"]
-        d_config[/"config"/]
-        d_backgrounds[/"backgrounds"/]
-        d_transcripts_list[/"transcripts_list"/]
+        get_tsites_bg["21-nt windows, seed filtered<br/><small>per species</small>"]
+        group_tsites["Group sites by seed<br/><small>group_tsites()</small>"]
     end
-    subgraph mod02["Module 2 — output folder, cache and resume"]
+    subgraph m3["Guide design"]
         direction TB
-        create_outputs["create_outputs"]
-        load_resume_state["load_resume_state"]
-        check_output["check_output"]
-        d_run_key__suboptimal_results_tsv[/"suboptimal checkpoint TSV<br/><small>.cache/{run_key}_suboptimal_results.tsv</small>"/]
-        d_run_key__optimal_results_tsv[/"optimal checkpoint TSV<br/><small>.cache/{run_key}_optimal_results.tsv</small>"/]
-        d_resume_state[/"existing_opt, existing_subopt, seen_guides, start_count"/]
+        score_sites["Score sites and design the guide<br/><small>score_sites()</small>"]
     end
-    subgraph mod03["Module 3 — foreground index"]
+    subgraph m4["Off-target screening"]
         direction TB
-        convert_fasta_to_string["convert_fasta_to_string"]
-        build_fg_index_fasta["build_fg_index_fasta"]
-        build_fg_index["build_fg_index<br/><small>samtools faidx</small>"]
-        d_accession_list[/"accession_list"/]
-        d_transcript_dict[/"transcript_dict"/]
+        serial_jobs["TargetFinder per species<br/><small>per species</small><br/><small>targetfinder.pl</small>"]
+        dec_clean{"Zero off-targets in every species?"}
     end
-    subgraph mod04["Module 4 — target-site discovery and scoring"]
+    subgraph m5["Results"]
         direction TB
-        pipeline["pipeline"]
-        get_tsites["get_tsites"]
-        group_tsites["group_tsites"]
-        score_sites["score_sites"]
-        d_t_sites[/"t_sites"/]
-        d_gsites[/"gsites"/]
-        d_site_scores[/"site_scores"/]
+        create_opt_subopt["Collect the results<br/><small>create_opt_subopt()</small>"]
+        amirna_json["Build the amiRNA result<br/><small>amirna_json()</small>"]
+        write_amirna_tsv["Write the table<br/><small>write_amirna_tsv()</small>"]
     end
-    subgraph mod05["Module 5 — off-target screening with TargetFinder"]
-        direction TB
-        serial_jobs["serial_jobs"]
-        _run_targetfinder["_run_targetfinder<br/><small>targetfinder.pl, ssearch36</small>"]
-        create_opt_subopt["create_opt_subopt"]
-        d_tf_cache[/"tf_results_cache.json<br/><small>.cache/tf_results_cache.json</small>"/]
-        d_tf_site_json[/"per-site TargetFinder result<br/><small>tf_results/site_{gs}{NNNN}_TargetFinder_result.json</small>"/]
-        d_opt_subopt[/"opt, subopt"/]
-        d_results[/"opt_results, subopt_results"/]
-    end
-    subgraph mod06["Module 6 — results, JSON/TSV and cloning oligos"]
-        direction TB
-        _warn_if_insufficient["_warn_if_insufficient"]
-        syn_optimal_site_index["syn_optimal_site_index"]
-        syntasirna_json["syntasirna_json"]
-        write_syntasirna_tsv["write_syntasirna_tsv"]
-        amirna_json["amirna_json"]
-        write_amirna_tsv["write_amirna_tsv"]
-        make_amirna_oligos["make_amirna_oligos"]
-        vector_filename_suffix["vector_filename_suffix"]
-        print_syn_vector_instructions["print_syn_vector_instructions"]
-        d_result_data[/"result_data"/]
-        d_site_index[/"site_index"/]
-        d_base_json[/"{run_key}_psams.json<br/><small>.cache/{run_key}_psams.json → {run_key}_psams.json</small>"/]
-        d_tsv_out[/"{run_key}_psams.tsv"/]
-        d_vector_json[/"vector-specific amiRNA result<br/><small>{run_key}_{vector}_psams.json / .tsv</small>"/]
-        d_oligos[/"fwd, rev"/]
-    end
-    d_args_fasta[/"-f/--fasta"/]
-    d_args_accessions[/"-a/--accessions"/]
-    d_psams_conf[/"psams.conf"/]
-    d_kmer_db[/"k-mer SQLite DB<br/><small>db/{species}_{version}.db</small>"/]
-    d_mrna_fa[/"mRNA FASTA<br/><small>{species}.{version}.transcripts.fasta</small>"/]
-    connect_backgrounds -.-> parse_species
-    check_output -.-> print_syn_vector_instructions
-    check_output -.-> vector_filename_suffix
-    check_output -.-> write_amirna_tsv
-    select_construct --> d_construct
-    d_construct --> select_vector
-    select_vector --> d_vector
-    load_config --> d_config
-    d_config --> connect_backgrounds
-    connect_backgrounds --> d_backgrounds
-    build_fg_index_fasta --> d_accession_list
-    get_transcripts --> d_transcripts_list
-    d_transcripts_list --> check_accessions
-    d_accession_list --> check_output
-    d_vector --> check_output
-    build_fg_index_fasta --> d_transcript_dict
-    d_accession_list --> build_fg_index
-    build_fg_index --> d_transcript_dict
-    amirna_json --> d_result_data
-    d_vector --> make_amirna_oligos
-    d_vector --> amirna_json
-    d_result_data --> write_amirna_tsv
-    syntasirna_json --> d_result_data
-    d_result_data --> write_syntasirna_tsv
-    syn_optimal_site_index --> d_site_index
-    d_site_index --> print_syn_vector_instructions
-    create_outputs --> d_run_key__suboptimal_results_tsv
-    create_outputs --> d_run_key__optimal_results_tsv
-    d_args_fasta --> parse_args
-    d_args_accessions --> parse_args
-    d_psams_conf --> load_config
-    d_kmer_db --> connect_backgrounds
-    d_mrna_fa --> connect_backgrounds
-    d_mrna_fa --> get_transcripts
-    d_args_accessions -->|"accessions"| check_accessions
-    d_args_fasta --> convert_fasta_to_string
-    convert_fasta_to_string -->|"fasta_str"| build_fg_index_fasta
-    d_args_accessions -->|"accession_list"| build_fg_index
-    d_backgrounds -->|"conn, mRNA_fa"| build_fg_index
-    d_mrna_fa --> build_fg_index
-    d_mrna_fa -->|"-d"| _run_targetfinder
-    d_run_key__optimal_results_tsv --> check_output
-    d_run_key__optimal_results_tsv --> load_resume_state
-    d_run_key__suboptimal_results_tsv --> load_resume_state
-    d_tf_site_json --> load_resume_state
-    load_resume_state --> d_resume_state
-    d_resume_state --> pipeline
-    pipeline -.-> get_tsites
-    pipeline -.-> group_tsites
-    pipeline -.-> score_sites
-    pipeline -.-> serial_jobs
-    pipeline -.-> create_opt_subopt
-    d_transcript_dict --> get_tsites
-    d_backgrounds -->|"kmers lookup"| get_tsites
-    get_tsites --> d_t_sites
-    d_t_sites --> group_tsites
-    group_tsites --> d_gsites
-    d_gsites --> score_sites
-    score_sites --> d_site_scores
-    d_site_scores --> serial_jobs
-    d_backgrounds --> serial_jobs
-    d_resume_state --> serial_jobs
-    serial_jobs -.-> _run_targetfinder
-    _run_targetfinder --> d_tf_cache
-    serial_jobs --> d_tf_site_json
-    serial_jobs --> d_run_key__optimal_results_tsv
-    serial_jobs --> d_run_key__suboptimal_results_tsv
-    serial_jobs --> d_opt_subopt
-    d_opt_subopt --> create_opt_subopt
-    create_opt_subopt --> d_results
-    d_results --> _warn_if_insufficient
-    d_results --> amirna_json
-    d_results --> syntasirna_json
-    d_results --> syn_optimal_site_index
-    d_results -->|"guide, star"| make_amirna_oligos
-    make_amirna_oligos --> d_oligos
-    d_oligos --> amirna_json
-    amirna_json --> d_base_json
-    syntasirna_json --> d_base_json
-    amirna_json --> d_vector_json
-    write_amirna_tsv --> d_vector_json
-    write_amirna_tsv --> d_tsv_out
-    write_syntasirna_tsv --> d_tsv_out
-    vector_filename_suffix -->|"file name"| d_vector_json
-    d_base_json -->|"cached run"| check_output
+    d_target[/"Target gene<br/><small>-f target.fa</small>"/]
+    d_run_folder[/"Run folder<br/><small>{run}_psams_output#91;_vs_sp1+sp2#93;</small>"/]
+    d_transcripts[/"Target transcripts"/]
+    d_candidates[/"Scored candidates"/]
+    d_opt[/"Optimal"/]
+    d_subopt[/"Suboptimal"/]
+    d_tf[/"TargetFinder output<br/><small>tf_results/</small>"/]
+    d_json[/"Result JSON<br/><small>{run}_psams.json</small>"/]
+    d_tsv[/"Result table<br/><small>{run}_psams.tsv</small>"/]
+    d_target --> parse_args
+    parse_args --> connect_backgrounds
+    connect_backgrounds --> d_run_folder
+    d_run_folder --> check_output
+    check_output --> build_fg_index_fasta
+    build_fg_index_fasta --> d_transcripts
+    d_transcripts --> get_tsites_bg
+    get_tsites_bg --> group_tsites
+    group_tsites -->|"surviving sites"| score_sites
+    score_sites --> d_candidates
+    d_candidates --> serial_jobs
+    serial_jobs --> dec_clean
+    serial_jobs --> d_tf
+    dec_clean -->|"yes"| d_opt
+    dec_clean -->|"no"| d_subopt
+    d_opt --> create_opt_subopt
+    d_subopt --> create_opt_subopt
+    create_opt_subopt --> amirna_json
+    amirna_json --> d_json
+    d_json --> write_amirna_tsv
+    write_amirna_tsv --> d_tsv
     classDef fn fill:#E3F0FC,stroke:#4C9BE8,stroke-width:1.5px,color:#1a1a1a;
     classDef input fill:#FDF1DC,stroke:#F5A623,color:#1a1a1a;
     classDef inter fill:#F2F2F2,stroke:#888888,color:#1a1a1a;
     classDef result fill:#DFF3EF,stroke:#1F9E89,color:#1a1a1a;
-    class pipeline,_warn_if_insufficient,load_config,parse_species,connect_backgrounds,get_transcripts,check_accessions,create_outputs,load_resume_state,syn_optimal_site_index,check_output,syntasirna_json,write_syntasirna_tsv,amirna_json,write_amirna_tsv,select_construct,parse_args,convert_fasta_to_string,build_fg_index_fasta,build_fg_index,make_amirna_oligos,select_vector,vector_filename_suffix,print_syn_vector_instructions,get_tsites,group_tsites,score_sites,serial_jobs,_run_targetfinder,create_opt_subopt fn;
-    class d_args_fasta,d_args_accessions,d_psams_conf,d_kmer_db,d_mrna_fa input;
-    class d_construct,d_vector,d_config,d_backgrounds,d_accession_list,d_transcripts_list,d_transcript_dict,d_result_data,d_site_index,d_run_key__suboptimal_results_tsv,d_run_key__optimal_results_tsv,d_t_sites,d_gsites,d_site_scores,d_tf_cache,d_opt_subopt,d_results,d_resume_state,d_oligos inter;
-    class d_tf_site_json,d_base_json,d_tsv_out,d_vector_json result;
+    class parse_args,connect_backgrounds,check_output,build_fg_index_fasta,get_tsites_bg,group_tsites,score_sites,serial_jobs,dec_clean,create_opt_subopt,amirna_json,write_amirna_tsv fn;
+    class d_target input;
+    class d_run_folder,d_transcripts,d_candidates inter;
+    class d_opt,d_subopt,d_tf,d_json,d_tsv result;
