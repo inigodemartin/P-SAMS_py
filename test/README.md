@@ -126,5 +126,9 @@ What it pins down:
 - The `-a/--accessions` branch keeping its old meaning, where the target
   IS one of the searched transcripts: a candidate hitting only its own
   target is optimal, and a guide aligning nowhere is still dropped.
+- Every species being checked at connection time: unregistered species,
+  a missing database, a database without the `kmers`/`annotation` tables
+  and a missing transcript FASTA are all refused before the run starts,
+  rather than halfway through it.
 
-Expected output: `Ran 17 tests` and `OK`.
+Expected output: `Ran 22 tests` and `OK`.

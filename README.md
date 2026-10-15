@@ -154,6 +154,12 @@ That count is what tells you whether dropping a host would recover usable
 guides. Expect fewer optimal sites as hosts are added, especially for short
 viral genes.
 
+Every species listed needs its own k-mer database, built with
+`create_db.py` and registered in `psams.conf` (see section 1). That is the
+slow, one-off part: building the database for a host takes a while, but it
+is done once and reused by every later run. Missing or half-built
+databases are reported before the run starts, naming the species.
+
 Notes and limits:
 
 - Several species require `-f/--fasta` input. With `-a/--accessions` the

@@ -393,6 +393,85 @@ class CacheKeyTest(unittest.TestCase):
             self.assertEqual(_load_tf_cache(path)["results"], {})
 
 
+class ConfigValidationTest(unittest.TestCase):
+    """
+    Every species screened against needs its own database, built by
+    create_db.py and registered in psams.conf. sqlite3 creates an empty
+    file for a path that does not exist, so a wrong path used to surface
+    only once the run was well under way, as a bare "no such table".
+    """
+
+    def _config(self, body):
+        import configparser
+        config = configparser.ConfigParser()
+        config.read_string(body)
+        return config
+
+    def _complete_species(self, tmp, name):
+        fasta = write_fasta(tmp / f"{name}.fa", {"TX00001": TRANSCRIPT})
+        db = tmp / f"{name}.db"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE kmers (kmer TEXT PRIMARY KEY, transcripts TEXT NOT NULL)")
+        conn.execute("CREATE TABLE annotation (transcript TEXT PRIMARY KEY, description TEXT)")
+        conn.commit()
+        conn.close()
+        return f"[{name}]\nmRNA={fasta}\nsql={db}\n"
+
+    def test_a_registered_species_connects(self):
+        from src.utils import connect_backgrounds
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            config = self._config(self._complete_species(tmp, "tomato"))
+            backgrounds = connect_backgrounds(config, "tomato")
+
+            self.assertEqual([b.name for b in backgrounds], ["tomato"])
+            backgrounds[0].conn.close()
+
+    def test_an_unregistered_species_is_refused(self):
+        from src.utils import connect_backgrounds
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            config = self._config(self._complete_species(tmp, "tomato"))
+            with self.assertRaises(SystemExit):
+                connect_backgrounds(config, "tomato,pepper")
+
+    def test_a_missing_database_is_refused_before_the_run_starts(self):
+        from src.utils import connect_backgrounds
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            fasta = write_fasta(tmp / "pepper.fa", {"TX00001": TRANSCRIPT})
+            config = self._config(
+                self._complete_species(tmp, "tomato")
+                + f"\n[pepper]\nmRNA={fasta}\nsql={tmp / 'absent.db'}\n"
+            )
+            with self.assertRaises(SystemExit):
+                connect_backgrounds(config, "tomato,pepper")
+
+            self.assertFalse((tmp / "absent.db").exists(),
+                             "the missing path must not be created as an empty database")
+
+    def test_a_database_without_the_expected_tables_is_refused(self):
+        from src.utils import connect_backgrounds
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            fasta = write_fasta(tmp / "pepper.fa", {"TX00001": TRANSCRIPT})
+            empty = tmp / "empty.db"
+            sqlite3.connect(empty).close()
+            config = self._config(f"[pepper]\nmRNA={fasta}\nsql={empty}\n")
+
+            with self.assertRaises(SystemExit):
+                connect_backgrounds(config, "pepper")
+
+    def test_a_missing_transcript_fasta_is_refused(self):
+        from src.utils import connect_backgrounds
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            body = self._complete_species(tmp, "tomato")
+            body = body.replace(str(tmp / "tomato.fa"), str(tmp / "absent.fa"))
+            with self.assertRaises(SystemExit):
+                connect_backgrounds(self._config(body), "tomato")
+
+
 class ArgumentTest(unittest.TestCase):
     """-s/--species takes a list, but only where the target is unambiguous."""
 

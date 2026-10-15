@@ -64,9 +64,34 @@ def connect_backgrounds(config, species):
         if name not in config:
             sys.exit(f"Error: species '{name}' is not registered in psams.conf.")
 
-        connection = sqlite3.connect(config[name]['sql'])
+        db_path = Path(config[name]['sql'])
+        mRNA_fa = config[name]['mRNA']
+
+        # sqlite3.connect() happily creates an empty file for a path that
+        # does not exist, which used to surface much later as a bare
+        # "no such table: kmers" traceback in the middle of the run. Check
+        # here instead, where the message can say what to do about it.
+        if not db_path.exists():
+            sys.exit(f"Error: k-mer database for '{name}' not found: {db_path}\n"
+                     f"       Build it with create_db.py, then check the 'sql' path "
+                     f"in psams.conf.")
+
+        if not Path(mRNA_fa).exists():
+            sys.exit(f"Error: transcript FASTA for '{name}' not found: {mRNA_fa}\n"
+                     f"       Check the 'mRNA' path in psams.conf.")
+
+        connection = sqlite3.connect(db_path)
         connection.row_factory = sqlite3.Row
-        backgrounds.append(Background(name, connection, config[name]['mRNA']))
+
+        tables = {row[0] for row in
+                  connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        missing = {'kmers', 'annotation'} - tables
+        if missing:
+            sys.exit(f"Error: database for '{name}' is missing the "
+                     f"{', '.join(sorted(missing))} table(s): {db_path}\n"
+                     f"       Rebuild it with create_db.py.")
+
+        backgrounds.append(Background(name, connection, mRNA_fa))
 
     return backgrounds
 
