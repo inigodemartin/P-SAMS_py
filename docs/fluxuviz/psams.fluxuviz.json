@@ -218,6 +218,35 @@
       "code": "def parse_args():\n\n    \"\"\"\n    Parse command-line arguments for the P-SAMS-like tool.\n    \"\"\"\n    parser = argparse.ArgumentParser(description=\"Plant Small RNA Maker Suite (P-SAMS). Artificial miRNA and syn-tasiRNA designer tool.\",formatter_class=argparse.RawTextHelpFormatter)\n    parser.add_argument(\"-f\", \"--fasta\",help=\"FASTA-formatted sequence. Not used if -a is set.\")\n    parser.add_argument(\"-a\", \"--accessions\",help=\"Gene accession(s). Comma-separated list. Not used if -f is set.\")\n    parser.add_argument(\"-s\", \"--species\",help=\"Species, as registered in psams.conf. Required if -a is set.\\n\"\n             \"Accepts a comma-separated list of species to screen off-targets against several\\n\"\n             \"transcriptomes at once (e.g. -s Solanum_lycopersicum,Capsicum_annuum): a candidate\\n\"\n             \"is then only optimal when it has no off-target in any of them. Several species\\n\"\n             \"require -f/--fasta input (see -a).\")\n    parser.add_argument(\"-o\", \"--output_path\",default=\".\",help=\"Output folder path. If -r/--run_name is not set, \"\n             \"the last path component doubles as the run name (e.g. -o runs/myrun behaves like \"\n             \"-o runs -r myrun). Required for syntasiRNA runs with more than one ':'-separated gene set, \"\n             \"unless -r/--run_name is given instead.\")\n    parser.add_argument(\"-r\", \"--run_name\",help=\"Name for this run's output subfolder, instead of auto-naming it \"\n             \"after the first accession/gene set. Required for syntasiRNA runs with more than one \"\n             \"':'-separated gene set, unless -o/--output_path already supplies a name (see -o).\")\n    parser.add_argument(\"-t\", \"--foldback\",default=\"eudicot\",choices=[\"eudicot\", \"monocot\"],help=\"Foldback type [eudicot, monocot]. Default = eudicot.\")\n    parser.add_argument(\"-c\", \"--construct\",choices=[\"amiRNA\", \"syntasiRNA\"],help=\"Construct type. If omitted, you'll be prompted to choose interactively.\")\n    parser.add_argument(\"-n\", \"--noofftarget\",action=\"store_true\",help=\"Run without predicting off-target transcripts.\")\n    parser.add_argument(\"-u\", \"--unlimit\",action=\"store_true\",help=\"Unlimited results (slow).\")\n    parser.add_argument(\"-l\", \"--limit\",type=int,default=3,help=\"Maximum number of optimal results to find before stopping. Default = 3. Ignored if -u/--unlimit is set.\")\n    parser.add_argument(\"-j\", \"--jobs\",type=int,default=1,help=\"Number of TargetFinder jobs to run in parallel. Default = 1 (serial).\")\n    parser.add_argument(\"-V\", \"--vector\",\n        action=\"store_true\",\n        help=\"For amiRNA, prompts to interactively pick a cloning vector and adds vector-specific \"\n             \"cloning oligos to the output. For syntasiRNA, prints the optimal sites found and the \"\n             \"exact clone_vector.py command to run afterwards to generate the cloning oligos — \"\n             \"choosing sites/vector/order always happens in that separate step, once the sites are \"\n             \"known (see clone_vector.py --help).\")\n    parser.add_argument(\"-p\", \"--phytozome_fasta\", help=\"Genome assembly fasta\")\n    parser.add_argument(\"-d\", \"--descriptions\", help=\"Annotation description file\")\n    parser.add_argument(\"-v\", \"--version\", help=\"Genome version\")\n\n    args = parser.parse_args()\n\n    if not args.accessions and not args.fasta:\n        parser.error(\"An input sequence or a gene accession ID were not provided!\")\n\n    if args.accessions and not args.species:\n        parser.error(\"A species name was not provided!\")\n\n    # Screening against several transcriptomes is meant for a target gene\n    # that belongs to none of them (a pathogen infecting several hosts), so\n    # the target sequence comes in as FASTA. With -a the target is itself a\n    # transcript of one registered species, and which species owns the\n    # accession would be ambiguous.\n    species_count = len([n for n in (args.species or \"\").split(\",\") if n.strip()])\n\n    if species_count > 1 and args.accessions:\n        parser.error(\"-a/--accessions takes a single species. Several species are only \"\n                     \"supported with -f/--fasta input.\")\n\n    if species_count > 1 and args.noofftarget:\n        parser.error(\"-n/--noofftarget disables off-target prediction, so screening against \"\n                     \"several species has no effect. Pass a single species, or drop -n.\")\n\n    if args.fasta and not args.species and not args.noofftarget:\n        parser.error(\"Off-target prediction with -f requires -s/--species (or use -n/--noofftarget to disable it).\")\n\n    if args.jobs < 1:\n        parser.error(\"-j/--jobs must be at least 1.\")\n\n    if args.limit < 1:\n        parser.error(\"-l/--limit must be at least 1.\")\n\n    return args"
     },
     {
+      "id": "d_config",
+      "kind": "data",
+      "label": "Species registry",
+      "module": null,
+      "role": "input",
+      "file": "psams.conf",
+      "format": "ini",
+      "param": "psams.conf",
+      "description": "One section per registered species, giving the path of its k-mer SQLite database ('sql') and of its transcript FASTA ('mRNA'). A species named with -s but absent from the file stops the run."
+    },
+    {
+      "id": "d_background",
+      "kind": "data",
+      "label": "Background transcriptome",
+      "module": null,
+      "role": "input",
+      "file": "{species}.db + mRNA.fa",
+      "format": "sqlite + fasta",
+      "param": "-s/--species",
+      "description": "Per species: the SQLite database built by create_db.py (tables 'kmers' and 'annotation') used for the seed lookup, and the transcript FASTA that TargetFinder scans and that -a accessions are looked up in. With -f and -n no species is needed and none is opened.",
+      "fanout": {
+        "variant": "species",
+        "item": "species",
+        "detail": "kmers + annotation, mRNA FASTA",
+        "note": "one comma-separated name per transcriptome to screen against",
+        "note_kind": "muted"
+      }
+    },
+    {
       "id": "connect_backgrounds",
       "kind": "function",
       "label": "Open each species",
@@ -618,6 +647,20 @@
       "format": "tsv"
     },
     {
+      "id": "d_vector",
+      "kind": "data",
+      "label": "Cloning vector",
+      "module": null,
+      "role": "input",
+      "file": "interactive prompt",
+      "param": "-V/--vector",
+      "description": "Chosen from a numbered list at the start of the run (select_vector()); it decides the vector-specific prefixes of the cloning oligos and the suffix of the result file name.",
+      "when": {
+        "construct": "amiRNA",
+        "vector": "yes"
+      }
+    },
+    {
       "id": "make_amirna_oligos",
       "kind": "function",
       "label": "Cloning oligos",
@@ -951,6 +994,26 @@
       "label": "guides already evaluated",
       "when": {
         "offtarget": "on"
+      }
+    },
+    {
+      "from": "d_config",
+      "to": "connect_backgrounds",
+      "kind": "data",
+      "label": "paths per species"
+    },
+    {
+      "from": "d_background",
+      "to": "connect_backgrounds",
+      "kind": "data"
+    },
+    {
+      "from": "d_vector",
+      "to": "make_amirna_oligos",
+      "kind": "data",
+      "when": {
+        "construct": "amiRNA",
+        "vector": "yes"
       }
     }
   ]

@@ -27,6 +27,8 @@ flowchart TD
         write_amirna_tsv["Write the table<br/><small>write_amirna_tsv()</small>"]
     end
     d_target[/"Target gene<br/><small>-f target.fa</small>"/]
+    d_config[/"Species registry<br/><small>psams.conf</small>"/]
+    d_background[/"Background transcriptome<br/><small>{species}.db + mRNA.fa</small>"/]
     d_run_folder[/"Run folder<br/><small>{run}_psams_output#91;_vs_sp1+sp2#93;</small>"/]
     d_transcripts[/"Target transcripts"/]
     d_candidates[/"Scored candidates"/]
@@ -56,11 +58,13 @@ flowchart TD
     amirna_json --> d_json
     d_json --> write_amirna_tsv
     write_amirna_tsv --> d_tsv
+    d_config -->|"paths per species"| connect_backgrounds
+    d_background --> connect_backgrounds
     classDef fn fill:#E3F0FC,stroke:#4C9BE8,stroke-width:1.5px,color:#1a1a1a;
     classDef input fill:#FDF1DC,stroke:#F5A623,color:#1a1a1a;
     classDef inter fill:#F2F2F2,stroke:#888888,color:#1a1a1a;
     classDef result fill:#DFF3EF,stroke:#1F9E89,color:#1a1a1a;
     class parse_args,connect_backgrounds,check_output,build_fg_index_fasta,get_tsites_bg,group_tsites,score_sites,serial_jobs,dec_clean,create_opt_subopt,amirna_json,write_amirna_tsv fn;
-    class d_target input;
+    class d_target,d_config,d_background input;
     class d_run_folder,d_transcripts,d_candidates inter;
     class d_opt,d_subopt,d_tf,d_json,d_tsv result;
