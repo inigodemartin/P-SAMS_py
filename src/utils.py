@@ -846,11 +846,13 @@ def parse_list(sep, flat_list):
 
     return final_list
 
-def create_opt_subopt(subopt, opt, construct, no_offtarget=False, debug=False):
+def create_opt_subopt(subopt, opt, construct, no_offtarget=False, debug=False, unlimit=False):
     """
 Format and organize optimal and suboptimal target sites into structured output dictionaries, updating their labels in the TargetFinder results.
 
-Suboptimal sites are sorted by off-target count and limited to the top three, while both groups include guide, star, oligos, and modified TF information.
+Suboptimal sites are sorted by off-target count and limited to the top three
+(all of them when unlimit is True), while both groups include guide, star,
+oligos, and modified TF information.
 Parameters
 ----------
 subopt : list of dict
@@ -864,6 +866,9 @@ no_offtarget : bool, optional
     classified as optimal, so results are labeled generically instead
 debug : bool, optional
     If True, prints debugging information
+unlimit : bool, optional
+    If True (-u/--unlimit), keep every suboptimal site instead of only
+    the top three, so the user can pick guides from the full set
 
 Returns
 -------
@@ -871,7 +876,7 @@ tuple
     opt_count : int
         Number of optimal sites processed
     subopt_count : int
-        Number of suboptimal sites processed (max 3)
+        Number of suboptimal sites processed (max 3 unless unlimit)
     opt_results : dict
         Dictionary of formatted optimal results
     subopt_results : dict
@@ -916,7 +921,7 @@ tuple
             'oligo2': site['oligo2'],
             'tf': site['tf']
         }
-        if subopt_count == 3:
+        if subopt_count == 3 and not unlimit:
             break
 
     return opt_count, subopt_count, opt_results, subopt_results

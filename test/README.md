@@ -8,12 +8,14 @@ annotation database or any network access.
 | `test_pepper_bugs.py` | the four bugs Alberto reported from the pepper transcriptome |
 | `test_insert_design.py` | the full-insert vectors PVX, TRV and the B/c multimodule entry |
 | `test_multi_background.py` | screening off-targets against several transcriptomes at once |
+| `test_unlimit_suboptimal.py` | `-u/--unlimit` reporting every suboptimal result, not just the top 3 |
 
 ```bash
 conda activate p-sams-py
 python3 test/test_pepper_bugs.py
 python3 test/test_insert_design.py
 python3 test/test_multi_background.py
+python3 test/test_unlimit_suboptimal.py
 ```
 
 ## `test_pepper_bugs.py`
@@ -132,3 +134,12 @@ What it pins down:
   rather than halfway through it.
 
 Expected output: `Ran 22 tests` and `OK`.
+
+## `test_unlimit_suboptimal.py`
+
+Pure unit tests over `create_opt_subopt` (`src/utils.py`), which used to cap
+the suboptimal results at the three sites with the fewest off-targets
+regardless of `-u/--unlimit`. With `-u` every suboptimal site is now kept
+(still sorted by off-target count); without it the cap of 3 is unchanged.
+
+Expected output: `Ran 3 tests` and `OK`.

@@ -52,7 +52,7 @@ def pipeline(transcript_dict, foldback, construct, offtarget, unlimit, backgroun
     ##################################
     # no se como llamar a esta parte #
     ##################################
-    opt_count, subopt_count, opt_results, subopt_results = create_opt_subopt(subopt, opt, construct, no_offtarget=not offtarget)
+    opt_count, subopt_count, opt_results, subopt_results = create_opt_subopt(subopt, opt, construct, no_offtarget=not offtarget, unlimit=unlimit)
 
     return opt_count, subopt_count, opt_results, subopt_results
 
