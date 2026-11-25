@@ -235,7 +235,7 @@ def main():
             transcript_dict = build_fg_index(accession_list, conn, species, mRNA_fa)
 
         if resume:
-            existing_opt, existing_subopt, seen_guides, start_count = load_resume_state(tf_results, opt_name, subopt_name)
+            existing_opt, existing_subopt, seen_guides, start_count = load_resume_state(tf_results, opt_name, subopt_name, foldback=foldback)
         else:
             existing_opt, existing_subopt, seen_guides, start_count = [], [], set(), 0
 

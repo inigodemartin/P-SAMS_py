@@ -328,28 +328,41 @@ def create_outputs(run_key, output_folder, syntasirna=False):
     write_amirna_tsv / write_syntasirna_tsv), flattened straight from the
     final JSON.
 
-    syntasiRNA's checkpoint never has Oligo1/Oligo2 columns: cloning oligos
-    for syntasiRNA combine several *chosen* sites in a chosen order (see
-    clone_vector.py) — there's no such thing as a per-site oligo pair, so a
-    table with one wouldn't mean anything. amiRNA's oligo pair is the
-    foldback hairpin insert for that one guide, meaningful per site, so it
-    keeps its Oligo1/Oligo2 columns.
+    Neither construct's checkpoint carries cloning oligos.
+
+    For syntasiRNA they never did: its oligos combine several *chosen*
+    sites in a chosen order (see clone_vector.py), so there is no such
+    thing as a per-site oligo pair.
+
+    amiRNA's checkpoint used to carry Oligo1/Oligo2, holding the bare
+    foldback hairpin from oligo_designer() — which is NOT what the run
+    finally hands the user: once a vector is picked, the oligos are
+    rebuilt for that vector (make_amirna_oligos), with a different BsaI
+    prefix and a different spacer, giving a different sequence and a
+    different length. The checkpoint can't just store the vector-specific
+    pair instead, because the same cache is deliberately reused across
+    vectors (see check_output / apply_vector_to_amirna_output), so any
+    oligo written here goes stale the moment -V changes. Two tables of
+    oligos for one job, disagreeing and both looking authoritative, is a
+    trap: order from the wrong one and the construct is wrong. So the
+    checkpoint stores only what it needs to resume, and the oligos live
+    in exactly one place — {run_key}_*_psams.tsv. Resuming recomputes
+    them from the guide, which is all they ever depended on (see
+    load_resume_state).
     """
     cache_dir = Path(output_folder) / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     subopt_name = cache_dir / f"{run_key}_suboptimal_results.tsv"
     opt_name = cache_dir / f"{run_key}_optimal_results.tsv"
 
-    if syntasirna:
-        # syntasiRNA runs may cover several gene sets writing into this
-        # same file (one call per gene set); Gene_set identifies which
-        # gene set a row belongs to, so results can be addressed as
-        # "geneset.site" (e.g. "1.1", "3.2") when choosing what to clone.
-        subopt_header = 'Gene_set\tSite_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
-        opt_header = 'Gene_set\tSite_index\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
-    else:
-        subopt_header = 'Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
-        opt_header = 'Site_index\tGuide\tStar\tOligo1\tOligo2\tIsoforms\tIsoform_seqs\n'
+    # syntasiRNA runs may cover several gene sets writing into this same
+    # file (one call per gene set); Gene_set identifies which gene set a
+    # row belongs to, so results can be addressed as "geneset.site"
+    # (e.g. "1.1", "3.2") when choosing what to clone. amiRNA has no gene
+    # sets, so the column is left out there.
+    gs = 'Gene_set\t' if syntasirna else ''
+    subopt_header = f'{gs}Site_index\tOfftarget_N\tOfftarget_list\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
+    opt_header = f'{gs}Site_index\tGuide\tStar\tIsoforms\tIsoform_seqs\n'
 
     with open(subopt_name, 'w') as subopt, open(opt_name, 'w') as opt:
         subopt.write(subopt_header)
@@ -358,7 +371,7 @@ def create_outputs(run_key, output_folder, syntasirna=False):
     return str(subopt_name), str(opt_name)
 
 
-def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
+def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None, foldback=None):
     """
     Reconstruct already-evaluated candidates from a previous partial run's
     TSV rows and its cached tf_results/*.json files, so a resumed run
@@ -373,6 +386,12 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
       start_count : highest Site_index already used, so new TSV rows and
                     tf_results files continue numbering instead of
                     colliding with the existing ones
+
+    foldback ('eudicot'/'monocot') is amiRNA's: the checkpoint stores no
+    cloning oligos (see create_outputs), so the foldback hairpin pair is
+    recomputed here from the guide, exactly as a non-resumed run computes
+    it in pipeline.py. Left as None for syntasiRNA, which has no per-site
+    oligo pair, and by callers that only want the guides back.
     """
     gs_prefix = f"gs{gene_set}_" if gene_set is not None else ""
     opt = []
@@ -433,6 +452,12 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
             return None
         return text
 
+    def _oligos(guide):
+        if foldback is None:
+            return '', ''
+        _, oligo1, oligo2 = oligo_designer(guide, foldback)
+        return oligo1, oligo2
+
     dropped_opt = set()
     dropped_subopt = set()
 
@@ -443,11 +468,10 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
         if tf is None:
             dropped_opt.add(lineno)
             continue
+        oligo1, oligo2 = _oligos(row['Guide'])
         opt.append({
             'guide': row['Guide'], 'star': row['Star'],
-            # syntasiRNA checkpoint rows have no Oligo1/Oligo2 (see
-            # create_outputs) — unused downstream for that construct anyway.
-            'oligo1': row.get('Oligo1', ''), 'oligo2': row.get('Oligo2', ''),
+            'oligo1': oligo1, 'oligo2': oligo2,
             'tf': tf,
         })
         seen_guides.add(row['Guide'])
@@ -459,9 +483,10 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None):
         if tf is None:
             dropped_subopt.add(lineno)
             continue
+        oligo1, oligo2 = _oligos(row['Guide'])
         site = {
             'guide': row['Guide'], 'star': row['Star'],
-            'oligo1': row.get('Oligo1', ''), 'oligo2': row.get('Oligo2', ''),
+            'oligo1': oligo1, 'oligo2': oligo2,
             'tf': tf,
         }
         subopt.append({'off_targets': int(row['Offtarget_N']), 'site': site})

@@ -1,6 +1,6 @@
 # Tests
 
-Two suites, both runnable on their own. Neither needs a transcriptome, an
+Five suites, each runnable on its own. None of them needs a transcriptome, an
 annotation database or any network access.
 
 | File | Covers |
@@ -9,6 +9,7 @@ annotation database or any network access.
 | `test_insert_design.py` | the full-insert vectors PVX, TRV and the B/c multimodule entry |
 | `test_multi_background.py` | screening off-targets against several transcriptomes at once |
 | `test_unlimit_suboptimal.py` | `-u/--unlimit` reporting every suboptimal result, not just the top 3 |
+| `test_checkpoint_oligos.py` | the checkpoint TSVs no longer carrying a second, disagreeing copy of the cloning oligos |
 
 ```bash
 conda activate p-sams-py
@@ -16,6 +17,7 @@ python3 test/test_pepper_bugs.py
 python3 test/test_insert_design.py
 python3 test/test_multi_background.py
 python3 test/test_unlimit_suboptimal.py
+python3 test/test_checkpoint_oligos.py
 ```
 
 ## `test_pepper_bugs.py`
@@ -143,3 +145,33 @@ regardless of `-u/--unlimit`. With `-u` every suboptimal site is now kept
 (still sorted by off-target count); without it the cap of 3 is unchanged.
 
 Expected output: `Ran 3 tests` and `OK`.
+
+## `test_checkpoint_oligos.py`
+
+Alberto reported (2026-11-25) that a finished amiRNA job left two oligo
+tables in the same folder, disagreeing with each other:
+`.cache/<run_key>_optimal_results.tsv` had 75-nt `Oligo1`/`Oligo2`, while
+`<run_key>_<vector>_psams.tsv` had the 58-nt `Forward`/`Reverse Oligo` that
+are the ones to order. The checkpoint held the bare foldback hairpin from
+`oligo_designer()`, written before any vector is applied.
+
+Storing the vector-specific pair there instead is not an option: the cache
+is deliberately reused when the same job is rerun with a different `-V`
+(see `check_output`), so it would go stale again. The checkpoint therefore
+stores no oligos at all, for either construct, and `load_resume_state`
+rebuilds them from the guide.
+
+Covered here:
+
+- Neither the amiRNA nor the syntasiRNA checkpoint header has
+  `Oligo1`/`Oligo2`; syntasiRNA keeps its `Gene_set` column.
+- A row the real pipeline appends matches its header column for column,
+  and carries no oligo (header and row builders live in different modules).
+- A resumed amiRNA run rebuilds the same foldback pair a fresh run would
+  compute; syntasiRNA, which has no per-site pair, leaves it empty.
+- A checkpoint written by an earlier version, still carrying the columns,
+  resumes fine — the stale pair is ignored, not reused.
+- Only `pMDC32B-AtMIR390a-B/c` ever matched the bare foldback pair, which
+  is why the mismatch stayed invisible until a BS-AtMIR390a job was run.
+
+Expected output: `Ran 8 tests` and `OK`.

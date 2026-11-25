@@ -537,24 +537,21 @@ def serial_jobs(target_count, construct, ids, site_scores,targetfinder, backgrou
     row_prefix = f"{gene_set}\t" if gene_set is not None else ""
     gs_prefix = f"gs{gene_set}_" if gene_set is not None else ""
 
+    # Checkpoint rows carry no cloning oligos, for either construct: the
+    # oligos the user orders are the vector-specific ones in
+    # {run_key}_*_psams.tsv, and a second, differing copy here would be a
+    # trap. See utils.create_outputs for the full reasoning.
     def _opt_row(site, count):
-        # syntasiRNA (gene_set is not None) checkpoint rows never carry
-        # Oligo1/Oligo2 — see create_outputs.
-        cols = [f"{row_prefix}{count}", site['guide'], site['star']]
-        if gene_set is None:
-            cols += [site['oligo1'], site['oligo2']]
-        cols += [site['names'], site['seqs']]
-        return "\t".join(cols) + "\n"
+        return "\t".join([
+            f"{row_prefix}{count}", site['guide'], site['star'],
+            site['names'], site['seqs'],
+        ]) + "\n"
 
     def _subopt_row(site, count):
-        cols = [
+        return "\t".join([
             f"{row_prefix}{count}", str(site['offtarget_number']), str(site['offtarget_list']),
-            site['guide'], site['star'],
-        ]
-        if gene_set is None:
-            cols += [site['oligo1'], site['oligo2']]
-        cols += [site['names'], site['seqs']]
-        return "\t".join(cols) + "\n"
+            site['guide'], site['star'], site['names'], site['seqs'],
+        ]) + "\n"
 
     # Resuming: candidates whose guide was already evaluated in a previous
     # partial run are dropped from site_scores so TargetFinder never runs

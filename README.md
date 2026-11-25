@@ -498,6 +498,14 @@ runs/Nbe01g01610_psams_output/
 Both constructs share the same layout: the optimal/suboptimal TSVs are
 internal checkpoint state, used only to resume an interrupted run, so they
 live hidden in `.cache/` rather than next to the user-facing result.
+
+**The cloning oligos live in exactly one place:** `*_psams.tsv`, in the
+`Forward Oligo` / `Reverse Oligo` columns. The checkpoint TSVs hold guides
+and off-target counts only — never oligos. They are written before a vector
+is known, and the same cache is deliberately reused when the run is repeated
+with a different `-V`, so any oligo stored there would be the wrong one to
+order as soon as the vector changed. Resuming rebuilds the oligos from the
+guide.
 `{run_key}_psams.tsv` (and, for `amiRNA`, its `-V` counterpart) is the
 actual user-facing table — every result and every TargetFinder hit already
 present in the final JSON, flattened into one row per hit. For
@@ -555,7 +563,7 @@ runs/Nbe01g01610_psams_output/
 │   ├── Nbe01g01610_amiRNA_optimal_results.tsv        # amiRNA checkpoint (resume only)
 │   ├── Nbe01g01610_amiRNA_suboptimal_results.tsv     # amiRNA checkpoint (resume only)
 │   ├── Nbe01g01610_syntasiRNA_psams.json             # syntasiRNA cache
-│   ├── Nbe01g01610_syntasiRNA_optimal_results.tsv    # syntasiRNA checkpoint (resume only, no Oligo1/Oligo2)
+│   ├── Nbe01g01610_syntasiRNA_optimal_results.tsv    # syntasiRNA checkpoint (resume only)
 │   ├── Nbe01g01610_syntasiRNA_suboptimal_results.tsv # syntasiRNA checkpoint (resume only)
 │   └── tf_results_cache.json                         # shared between both runs, see below
 └── tf_results/
