@@ -1,3 +1,6 @@
+import sys
+
+
 def _revcomp(seq: str) -> str:
     return seq.translate(str.maketrans("ACGT", "TGCA"))[::-1]
 
@@ -6,12 +9,20 @@ def _make_oligos(fwd_prefix: str, rev_prefix: str, body: str):
     return fwd_prefix + body, rev_prefix + _revcomp(body)
 
 
-# (fwd_prefix, rev_prefix, spacer)
+# (fwd_prefix, rev_prefix, spacer, foldback)
+#
+# Each vector carries one precursor, and the amiRNA* cloned into it is
+# designed against that precursor's arms (see utils.oligo_designer): the
+# AtMIR390a backbones take the eudicot star, the OsMIR390 one the monocot
+# star, which differ. The foldback a vector belongs to is recorded here so
+# the two choices can be checked against each other (check_vector_foldback)
+# instead of being picked independently — -t/--foldback and the -V menu are
+# two names for the same decision.
 AMIRNA_VECTORS = {
-    "pMDC32B-AtMIR390a-B/c":        ("TGTA", "AATG", "ATGATGATCACATTCGTTATCTATTTTTT"),
-    "pMDC32B-OsMIR390-B/c":          ("CTTG", "CATG", "ATGATGATCACATTCGTTATCTATTTTTT"),
-    "pMDC32B-BS-AtMIR390a-B/c":      ("TGTA", "AATG", "CGAAATCAAACT"),
-    "pMDC32B-BS-AtMIR390a-A18G-B/c": ("TGTG", "AATG", "CGAAATCAAACT"),
+    "pMDC32B-AtMIR390a-B/c":        ("TGTA", "AATG", "ATGATGATCACATTCGTTATCTATTTTTT", "eudicot"),
+    "pMDC32B-OsMIR390-B/c":          ("CTTG", "CATG", "ATGATGATCACATTCGTTATCTATTTTTT", "monocot"),
+    "pMDC32B-BS-AtMIR390a-B/c":      ("TGTA", "AATG", "CGAAATCAAACT", "eudicot"),
+    "pMDC32B-BS-AtMIR390a-A18G-B/c": ("TGTG", "AATG", "CGAAATCAAACT", "eudicot"),
 }
 
 # (fwd_prefix, rev_prefix, target_site_spacer or None)
@@ -26,9 +37,35 @@ SYNTASIRNA_VECTORS = {
 }
 
 
+def check_vector_foldback(vector: str, foldback: str) -> None:
+    """
+    Refuse a cloning vector whose precursor is not the foldback the amiRNA*
+    was designed for.
+
+    The amiRNA* is not interchangeable between the two: it base-pairs with
+    the precursor's arms, and eudicot (AtMIR390a) and monocot (OsMIR390)
+    stars differ (see utils.oligo_designer). Nothing stops the two choices
+    from being made independently — -t/--foldback defaults to eudicot while
+    the -V menu offers the OsMIR390 vector right below the AtMIR390a one —
+    and the resulting oligo pair is a chimera: the monocot overhangs around
+    a eudicot star, filed under a filename naming the monocot vector.
+    """
+    expected = AMIRNA_VECTORS.get(vector, (None,) * 4)[3]
+    if expected is None or not foldback or expected == foldback:
+        return
+    sys.exit(
+        f"Error: vector '{vector}' carries the {expected} foldback precursor, but these "
+        f"amiRNAs were designed with the '{foldback}' foldback (-t/--foldback). The amiRNA* "
+        f"pairs with the precursor's own arms, so the two differ and must match.\n"
+        f"       Design with -t {expected}, or pick a vector of the "
+        f"'{foldback}' foldback: "
+        + ", ".join(v for v, spec in AMIRNA_VECTORS.items() if spec[3] == foldback) + "."
+    )
+
+
 def make_amirna_oligos(amirna: str, amirna_star: str, vector: str):
     """Return (forward_oligo, reverse_oligo) for an amiRNA candidate and cloning vector."""
-    fwd_prefix, rev_prefix, spacer = AMIRNA_VECTORS[vector]
+    fwd_prefix, rev_prefix, spacer, _foldback = AMIRNA_VECTORS[vector]
     upstream_star = _revcomp(amirna[-2:])
     star_block = upstream_star + amirna_star[:19]
     body = amirna + spacer + star_block

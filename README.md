@@ -114,7 +114,7 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana -o runs/Nbe01g01610 -
 | `-o, --output_path`  | Folder where results are created (defaults to the current directory). If `-r` isn't given, the last path component doubles as the run name — see below |
 | `-r, --run_name`     | Name for this run's output subfolder, instead of auto-naming it after the first accession/gene set. **Required** for `syntasiRNA` runs with more than one `:`-separated gene set, unless `-o` already supplies a name — see below |
 | `-c, --construct`    | `amiRNA` or `syntasiRNA`. If omitted, you're prompted to choose interactively |
-| `-t, --foldback`     | `eudicot` (default) or `monocot` |
+| `-t, --foldback`     | `eudicot` (default) or `monocot`. It decides the precursor, hence the amiRNA`*`, the hairpin and which `-V` vectors are allowed, so the two foldbacks are different designs and need a folder each — a run is refused if the folder already holds the other one |
 | `-n, --noofftarget`  | Disables off-target prediction with TargetFinder |
 | `-u, --unlimit`      | Don't limit to 3 optimal results: go through all possible candidates (slower). Also reports every suboptimal result instead of only the 3 with fewest off-targets |
 | `-l, --limit`        | Maximum number of optimal results to find before stopping. Default = 3. Ignored if `-u/--unlimit` is set |
@@ -167,7 +167,12 @@ Notes and limits:
   species is accepted there.
 - Results screened against several hosts go into their own output folder
   (suffixed `_vs_species1+species2`), so they are never mistaken for an
-  earlier single-host run of the same gene.
+  earlier single-host run of the same gene. Swapping one single host for
+  another keeps the same folder name, so there the run is stopped instead:
+  every run records the species it screened against, and a folder that
+  already holds a run against other hosts is not reused or extended (its
+  optimal sites were never checked against the hosts now being asked
+  about). Give that run its own `-o`/`-r`.
 - Each extra species costs one more TargetFinder call per candidate. Raise
   `-j/--jobs` to run them in parallel.
 - The target sequence does not need to exist in any of the transcriptomes,
@@ -200,12 +205,19 @@ Available vectors depend on the construct type:
 
 **amiRNA** (`-c amiRNA`):
 
-| Vector | Overhang |
-|--------|----------|
-| `pMDC32B-AtMIR390a-B/c` | TGTA / AATG |
-| `pMDC32B-OsMIR390-B/c` | CTTG / CATG |
-| `pMDC32B-BS-AtMIR390a-B/c` | TGTA / AATG |
-| `pMDC32B-BS-AtMIR390a-A18G-B/c` | TGTG / AATG |
+| Vector | Overhang | Foldback |
+|--------|----------|----------|
+| `pMDC32B-AtMIR390a-B/c` | TGTA / AATG | eudicot |
+| `pMDC32B-OsMIR390-B/c` | CTTG / CATG | monocot |
+| `pMDC32B-BS-AtMIR390a-B/c` | TGTA / AATG | eudicot |
+| `pMDC32B-BS-AtMIR390a-A18G-B/c` | TGTG / AATG | eudicot |
+
+The vector and `-t/--foldback` are two names for the same choice: the amiRNA\*
+base-pairs with its precursor's own arms, and the eudicot (AtMIR390a) and
+monocot (OsMIR390) stars differ, so a vector built on the other precursor is
+refused instead of producing a chimeric oligo pair under that vector's name.
+`clone_vector.py` checks it too, against the foldback recorded in the cached
+run.
 
 **syn-tasiRNA** (`-c syntasiRNA`):
 
@@ -274,10 +286,18 @@ and only (re)computes the cloning oligos for the newly selected vector:
 
 ```
 P-SAMS already executed for Nbe01g01610.7.
-Reusing cached results and generating cloning oligos for vector 'pMDC32B-OsMIR390-B/c'.
-Output: runs/Nbe01g01610_psams_output/Nbe01g01610_amiRNA_pMDC32B-OsMIR390-Bc_psams.json
+Reusing cached results and generating cloning oligos for vector 'pMDC32B-BS-AtMIR390a-B/c'.
+Output: runs/Nbe01g01610_psams_output/Nbe01g01610_amiRNA_pMDC32B-BS-AtMIR390a-Bc_psams.json
 Exiting script.
 ```
+
+**Re-running amiRNA with a different `-t/--foldback` is a different design,
+not a rerun.** The guides and their TargetFinder results are the same for both
+foldbacks, but the amiRNA`*`, the hairpin and the available vectors are not,
+and nothing in the folder name or the run key says which foldback a run used.
+Pointing a `monocot` run at a folder that already holds a `eudicot` one (or
+vice versa) therefore stops with an error instead of answering it with the
+cached results or overwriting them: give the second design its own `-o`/`-r`.
 
 **syn-tasiRNA + `-V` is always two commands, on purpose.** A tandem
 syn-tasiRNA construct needs one (or more) guide per gene set, chosen by you
@@ -483,8 +503,8 @@ candidates — and the results are merged into the existing TSVs and JSON.
 runs/Nbe01g01610_psams_output/
 ├── Nbe01g01610_amiRNA_psams.json                        # vector-agnostic cache / final result
 ├── Nbe01g01610_amiRNA_psams.tsv                         # flattened from the JSON above, one row per hit
-├── Nbe01g01610_amiRNA_pMDC32B-OsMIR390-Bc_psams.json    # only created when -V is used
-├── Nbe01g01610_amiRNA_pMDC32B-OsMIR390-Bc_psams.tsv     # ditto, flattened
+├── Nbe01g01610_amiRNA_pMDC32B-BS-AtMIR390a-Bc_psams.json  # only created when -V is used
+├── Nbe01g01610_amiRNA_pMDC32B-BS-AtMIR390a-Bc_psams.tsv   # ditto, flattened
 ├── .cache/
 │   ├── Nbe01g01610_amiRNA_psams.json                    # cache
 │   ├── Nbe01g01610_amiRNA_optimal_results.tsv           # checkpoint (resume only)

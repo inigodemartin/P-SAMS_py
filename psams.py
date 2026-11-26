@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
-from src.utils import load_config, connect_backgrounds, parse_species, create_opt_subopt, amirna_json, syntasirna_json, write_amirna_tsv, write_syntasirna_tsv, parse_list, create_outputs, check_output, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
+from src.utils import load_config, connect_backgrounds, parse_species, create_opt_subopt, amirna_json, syntasirna_json, write_amirna_tsv, write_syntasirna_tsv, parse_list, create_outputs, check_output, check_cached_run, get_transcripts, check_accessions, syn_optimal_site_index, load_resume_state
 from src.args_parser import parse_args, select_construct
 from src.input_parser import convert_fasta_to_string, build_fg_index, build_fg_index_fasta
 from src.pipeline import get_tsites, group_tsites, score_sites, serial_jobs
 from src.add_species import create_kmer_db
-from src.oligo_design import make_amirna_oligos, select_vector, vector_filename_suffix, print_syn_vector_instructions
+from src.oligo_design import make_amirna_oligos, select_vector, vector_filename_suffix, print_syn_vector_instructions, check_vector_foldback
 
 import os
 import shutil
@@ -91,6 +91,10 @@ def main():
     vector = None
     if args.vector and construct == "amiRNA":
         vector = select_vector(construct)
+        # The vector and -t/--foldback are two names for the same choice:
+        # the amiRNA* this run designs only pairs with its own precursor's
+        # arms (see check_vector_foldback).
+        check_vector_foldback(vector, foldback)
 
     if noofftarget:
         offtarget = False
@@ -201,6 +205,14 @@ def main():
     # written at the end of the run from the final JSON.
     results_dir = cache_dir
     results_file = results_dir / f"{run_key}_optimal_results.tsv"
+    # Everything below reuses or extends whatever this folder already
+    # holds, which is only right when the cached run asked the same
+    # question. Only amiRNA's results depend on the foldback (it shapes the
+    # star and the hairpin); syntasiRNA reports guides only, so its cache
+    # is valid for either one.
+    check_cached_run(base_output,
+                     foldback=foldback if construct == "amiRNA" else None,
+                     species=species_names)
     check_output(results_file, accession_list, output_folder, base_output, vector, construct, limit=limit, unlimit=unlimit, want_vector_info=bool(args.vector), run_key=run_key)
 
     # Resuming: a previous partial run (e.g. capped by a lower -l/--limit)
@@ -243,7 +255,7 @@ def main():
 
         _warn_if_insufficient(opt_count, limit, unlimit)
 
-        result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget, foldback=foldback)
+        result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget, foldback=foldback, species=species_names)
 
         if vector:
             for results in [opt_results, subopt_results]:
@@ -252,7 +264,7 @@ def main():
                     res['oligo1'] = fwd
                     res['oligo2'] = rev
             vector_output = output_folder / f"{run_key}_{vector_filename_suffix(vector)}_psams.json"
-            result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget, foldback=foldback)
+            result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget, foldback=foldback, species=species_names)
             write_amirna_tsv(result_data, vector_output.with_suffix(".tsv"))
         else:
             # No vector selected: the cache is the only result, surface it.
@@ -306,7 +318,7 @@ def main():
                 "sub_r": subopt_results,
                 }
 
-        result_data = syntasirna_json(count, groups, base_output, no_offtarget=noofftarget)
+        result_data = syntasirna_json(count, groups, base_output, no_offtarget=noofftarget, species=species_names)
         write_syntasirna_tsv(result_data, output_folder / f"{run_key}_psams.tsv")
 
         if args.vector:

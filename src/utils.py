@@ -11,7 +11,7 @@ import sqlite3
 from collections import namedtuple
 from pathlib import Path
 
-from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix, prompt_syn_order, print_syn_vector_instructions
+from src.oligo_design import make_amirna_oligos, make_syntasirna_oligos, vector_filename_suffix, prompt_syn_order, print_syn_vector_instructions, check_vector_foldback
 
 ########################################################
 #                   CONFIG LOADER                      #
@@ -388,10 +388,12 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None, foldback=Non
                     colliding with the existing ones
 
     foldback ('eudicot'/'monocot') is amiRNA's: the checkpoint stores no
-    cloning oligos (see create_outputs), so the foldback hairpin pair is
+    cloning oligos (see create_outputs), so the foldback hairpin pair — and
+    the star it is built around, which the checkpoint does store — are
     recomputed here from the guide, exactly as a non-resumed run computes
-    it in pipeline.py. Left as None for syntasiRNA, which has no per-site
-    oligo pair, and by callers that only want the guides back.
+    them in pipeline.py. Left as None for syntasiRNA, which has no per-site
+    oligo pair, and by callers that only want the guides back; the stored
+    star is then handed back untouched.
     """
     gs_prefix = f"gs{gene_set}_" if gene_set is not None else ""
     opt = []
@@ -452,11 +454,18 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None, foldback=Non
             return None
         return text
 
-    def _oligos(guide):
+    def _derived(row):
+        """
+        The star and the oligo pair are both pure functions of the guide and
+        the foldback, so they are rebuilt here instead of being read back.
+        The Star column is kept in the checkpoint as a human-readable record
+        of the run that wrote it, but a run resumed under the other
+        -t/--foldback would otherwise report that run's star next to this
+        run's oligos, in the same row.
+        """
         if foldback is None:
-            return '', ''
-        _, oligo1, oligo2 = oligo_designer(guide, foldback)
-        return oligo1, oligo2
+            return row['Star'], '', ''
+        return oligo_designer(row['Guide'], foldback)
 
     dropped_opt = set()
     dropped_subopt = set()
@@ -468,9 +477,9 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None, foldback=Non
         if tf is None:
             dropped_opt.add(lineno)
             continue
-        oligo1, oligo2 = _oligos(row['Guide'])
+        star, oligo1, oligo2 = _derived(row)
         opt.append({
-            'guide': row['Guide'], 'star': row['Star'],
+            'guide': row['Guide'], 'star': star,
             'oligo1': oligo1, 'oligo2': oligo2,
             'tf': tf,
         })
@@ -483,9 +492,9 @@ def load_resume_state(tf_dir, opt_name, subopt_name, gene_set=None, foldback=Non
         if tf is None:
             dropped_subopt.add(lineno)
             continue
-        oligo1, oligo2 = _oligos(row['Guide'])
+        star, oligo1, oligo2 = _derived(row)
         site = {
-            'guide': row['Guide'], 'star': row['Star'],
+            'guide': row['Guide'], 'star': star,
             'oligo1': oligo1, 'oligo2': oligo2,
             'tf': tf,
         }
@@ -526,7 +535,15 @@ def add_species_to_config(config_file, species, sql_db, mrna_path):
     print(f"Added species '{species}' to config")
 
 def apply_vector_to_amirna_output(data: dict, vector: str) -> None:
-    """Recompute Forward/Reverse Oligo fields of a cached amiRNA output for a new vector, in place."""
+    """Recompute Forward/Reverse Oligo fields of a cached amiRNA output for a new vector, in place.
+
+    The cached run records the foldback its amiRNA*s were designed for
+    (see amirna_json), so a vector built on the other precursor is refused
+    here rather than producing a chimeric pair under that vector's name —
+    this is the path both `clone_vector.py` and a `-V` rerun on an existing
+    run take (see check_output).
+    """
+    check_vector_foldback(vector, data.get("foldback", "eudicot"))
     for section in ("optimal", "suboptimal", "results"):
         for entry in data.get(section, {}).values():
             fwd, rev = make_amirna_oligos(entry["amiRNA"], entry["amiRNA*"], vector)
@@ -598,6 +615,78 @@ def apply_vector_to_syntasirna_output(data: dict, vector: str, target_site: str,
         data["selected_sites"] = [t.strip() for t in order.split(',')]
         fwd, rev = make_syntasirna_oligos(syn_guides, vector, target_site)
         data["cloning_oligos"] = {"forward": fwd, "reverse": rev}
+
+
+def check_cached_run(base_output, foldback=None, species=None) -> None:
+    """
+    Refuse to reuse — or extend — a cached run made with different
+    parameters.
+
+    An output folder is named after the gene(s) or -r/--run_name only, and
+    the run key adds nothing but the construct, so a second run of the same
+    input lands on the same cache whatever else changed. check_output then
+    answers it with the first run's results ("already executed", or
+    rebuilding the cloning oligos from them), and the resume path extends
+    them as if they were this run's own. That is only right while the two
+    runs ask the same question. Two parameters change the answer and are
+    recorded in the cache (see amirna_json / syntasirna_json):
+
+      foldback  amiRNA's precursor (-t/--foldback). The guides and their
+                TargetFinder results are the same for both, but the
+                amiRNA*, the hairpin and the vectors it can be cloned into
+                are not. Pass None for syntasiRNA, which reports guides
+                only. Caches written before the field existed carry no
+                "foldback" key and are taken at the default, eudicot, the
+                same convention insert_design.check_foldback uses.
+
+      species   the background transcriptome(s) screened (-s/--species).
+                A guide is only optimal when it has no off-target in them,
+                so a run against other hosts is a different search: its
+                optimal sites can be suboptimal here, and reusing these
+                would hand back guides that were never checked against the
+                hosts asked for. Several hosts already get their own
+                folder (see psams.py); this covers swapping one for
+                another, which does not. Compared as a set — the order of
+                -s does not change the result. Caches written before the
+                field existed carry no "species" key and are let through.
+
+    Rerunning in place is not the answer either: it would overwrite a
+    finished run the user may still need with results that are not an
+    extension of it. So this stops and asks for a folder of its own.
+    """
+    base_output = Path(base_output) if base_output else None
+    if base_output is None or not base_output.exists():
+        return
+    try:
+        with open(base_output) as f:
+            cached = json.load(f)
+    except ValueError:
+        return
+
+    if foldback is not None:
+        cached_foldback = cached.get("foldback", "eudicot")
+        if cached_foldback != foldback:
+            sys.exit(
+                f"Error: this output folder already holds an amiRNA run designed with the "
+                f"'{cached_foldback}' foldback ({base_output.name}), and '{foldback}' was "
+                f"requested.\n"
+                f"       Their amiRNA*, hairpin and cloning vectors all differ, so one "
+                f"cannot stand in for the other.\n"
+                f"       Use a different -o/--output_path or -r/--run_name for the "
+                f"'{foldback}' design."
+            )
+
+    cached_species = cached.get("species")
+    if cached_species is not None and set(cached_species) != set(species or []):
+        requested = ", ".join(species or []) or "none (-n/--noofftarget)"
+        sys.exit(
+            f"Error: this output folder already holds a run screened against "
+            f"{', '.join(cached_species) or 'no background'} ({base_output.name}), and "
+            f"{requested} was requested.\n"
+            f"       A guide is only optimal when it has no off-target in the hosts "
+            f"screened, so these results do not answer that run.\n"
+            f"       Use a different -o/--output_path or -r/--run_name for it."
+        )
 
 
 def check_output(results_file, accession_list, output_folder, base_output=None, vector=None, construct=None, limit=3, unlimit=False, want_vector_info=False, run_key=None):
@@ -969,7 +1058,7 @@ def _extract_tf_hits(tf_raw) -> list:
     return []
 
 
-def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None, no_offtarget=False, selected_sites=None):
+def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligos=None, no_offtarget=False, selected_sites=None, species=None):
     """
     Build syntasiRNA JSON output from pipeline results.
 
@@ -983,6 +1072,8 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
             suboptimal) and the suboptimal section is omitted
         selected_sites (list, optional): ordered 'geneset.site' labels chosen
             for cloning_oligos (e.g. ['1.1', '3.2', '2.1'])
+        species (list, optional): the background transcriptome(s) the
+            candidates were screened against (see amirna_json)
     """
 
     blocks = []
@@ -1035,6 +1126,8 @@ def syntasirna_json(group_count, groups, output_file, vector=None, cloning_oligo
         output["cloning_oligos"] = cloning_oligos
     if selected_sites:
         output["selected_sites"] = selected_sites
+    if species:
+        output["species"] = list(species)
 
     with open(output_file, "w") as out:
         json.dump(output, out, indent=2)
@@ -1104,7 +1197,7 @@ def write_syntasirna_tsv(data: dict, tsv_path) -> None:
             out.write("\t".join(values) + "\n")
 
 
-def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_offtarget=False, foldback=None):
+def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_offtarget=False, foldback=None, species=None):
     """
     Builds the JSON output for amiRNA results.
 
@@ -1121,6 +1214,11 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_off
             later cloning step knows which foldback the cached amiRNA*
             belongs to — the two use different basal stems, and only the
             eudicot AtMIR390a one has a defined insert-vector design.
+        species (list, optional): the background transcriptome(s) the
+            candidates were screened against. Recorded so the run can say
+            which hosts its guides are clean in, and so a later run
+            against other hosts is not answered with these results (see
+            check_cached_run).
     """
     section_key = "results" if no_offtarget else "optimal"
     entry_label = "amiRNA Result" if no_offtarget else "amiRNA Optimal Result"
@@ -1132,6 +1230,8 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_off
         output["vector"] = vector
     if foldback:
         output["foldback"] = foldback
+    if species:
+        output["species"] = list(species)
     result_count = 0
 
     # Optimal / generic results

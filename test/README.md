@@ -1,6 +1,6 @@
 # Tests
 
-Five suites, each runnable on its own. None of them needs a transcriptome, an
+Six suites, each runnable on its own. None of them needs a transcriptome, an
 annotation database or any network access.
 
 | File | Covers |
@@ -10,6 +10,7 @@ annotation database or any network access.
 | `test_multi_background.py` | screening off-targets against several transcriptomes at once |
 | `test_unlimit_suboptimal.py` | `-u/--unlimit` reporting every suboptimal result, not just the top 3 |
 | `test_checkpoint_oligos.py` | the checkpoint TSVs no longer carrying a second, disagreeing copy of the cloning oligos |
+| `test_run_consistency.py` | a run's foldback and species staying with its results: the vector, the resumed star and the cached run |
 
 ```bash
 conda activate p-sams-py
@@ -18,6 +19,7 @@ python3 test/test_insert_design.py
 python3 test/test_multi_background.py
 python3 test/test_unlimit_suboptimal.py
 python3 test/test_checkpoint_oligos.py
+python3 test/test_run_consistency.py
 ```
 
 ## `test_pepper_bugs.py`
@@ -175,3 +177,36 @@ Covered here:
   is why the mismatch stayed invisible until a BS-AtMIR390a job was run.
 
 Expected output: `Ran 8 tests` and `OK`.
+
+## `test_run_consistency.py`
+
+An output folder is named after the gene(s) or `-r/--run_name`, and the run
+key adds only the construct, so everything else about the command line is
+forgotten once a run finishes. Two parameters change what the results mean:
+`-t/--foldback`, which picks the precursor an amiRNA is built into (eudicot
+AtMIR390a or monocot OsMIR390 — the guide and its TargetFinder result are the
+same either way, the amiRNA\*, the hairpin and the available vectors are not),
+and `-s/--species`, the background transcriptome(s) screened (a guide is only
+optimal when it has no off-target in them). Neither was checked anywhere, so
+the same choice could be stated twice and disagree:
+
+- **The `-V` vector menu.** A vector carries one precursor, but any vector
+  could be picked for any foldback. `-t eudicot` (the default) plus
+  `pMDC32B-OsMIR390-B/c` produced the monocot overhangs around a eudicot star
+  — one base away from the real monocot pair — in a file named after the
+  monocot vector. Each vector now declares its foldback, and a mismatch is
+  refused, both against `-t` in `psams.py` and against the cached run's
+  recorded foldback in `clone_vector.py`.
+- **The checkpoint's `Star` column.** Resuming with the other `-t` rebuilt the
+  oligos from the guide (as of 2feb357) but read the star back from the
+  checkpoint, so one row of the final table carried the old foldback's
+  amiRNA\* next to the new foldback's oligos. The star is a pure function of
+  guide + foldback, so it is now rebuilt alongside them.
+- **The cached run.** A second run of the same gene with the other foldback,
+  or screened against another host, was answered with the first run's results
+  (`already executed`, or its cloning oligos rebuilt for a vector its star was
+  never designed for). Both parameters are now recorded in the run's JSON and
+  checked before anything is reused or extended; a run that asks a different
+  question is sent to a folder of its own.
+
+Expected output: `Ran 19 tests` and `OK`.
