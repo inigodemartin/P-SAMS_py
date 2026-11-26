@@ -39,16 +39,19 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.oligo_design import (  # noqa: E402
-    AMIRNA_VECTORS, check_vector_foldback, make_amirna_oligos)
+    AMIRNA_VECTORS, check_vector_foldback, make_amirna_oligos, select_vector)
 from src.utils import (  # noqa: E402
     amirna_json, apply_vector_to_amirna_output, check_cached_run,
-    create_opt_subopt, create_outputs, load_resume_state, oligo_designer)
+    create_opt_subopt, create_outputs, load_resume_state, oligo_designer,
+    write_amirna_tsv)
+from psams import _warn_stale_vector_files  # noqa: E402
 
 # Same 21-nt guide the other suites use.
 GUIDE = "TTCGACGTACGTACGTACGTA"
@@ -190,8 +193,13 @@ class ResumeRebuildsTheStarTest(unittest.TestCase):
             opt, subopt, _, _ = load_resume_state(
                 str(tf_dir), opt_name, subopt_name, foldback="monocot")
             counts = create_opt_subopt(subopt, opt, "amiRNA")
+            # A vector is named because that is now the only kind of
+            # amiRNA result that carries cloning oligos at all (see
+            # amirna_json); the monocot vector is the one this foldback
+            # can be cloned into.
             data = amirna_json(counts[0], counts[1], counts[2], counts[3],
-                               Path(tmp) / "out.json", foldback="monocot")
+                               Path(tmp) / "out.json", foldback="monocot",
+                               vector="pMDC32B-OsMIR390-B/c")
 
         entry = data["optimal"]["amiRNA Optimal Result 1"]
         self.assertEqual(entry["amiRNA*"], MONOCOT_STAR)
@@ -307,6 +315,165 @@ class CachedRunIsTiedToItsParametersTest(unittest.TestCase):
             data = json.loads(path.read_text())
         self.assertEqual(data["species"], ["alpha", "beta"])
         self.assertEqual(data["foldback"], "eudicot")
+
+
+def _one_result_json(tmp, name, **kwargs):
+    """Write a one-result amiRNA JSON through the real builder."""
+    site = {1: {"guide": GUIDE, "star": EUDICOT_STAR,
+                "oligo1": EUDICOT_FWD, "oligo2": EUDICOT_REV, "tf": []}}
+    return amirna_json(1, 0, site, {}, Path(tmp) / name,
+                       no_offtarget=True, foldback="eudicot", **kwargs)
+
+
+class OligosOnlyWhereTheVectorIsNamedTest(unittest.TestCase):
+    """
+    A result without --vector used to carry Forward/Reverse Oligo anyway,
+    holding the bare foldback hairpin. That pair is not vector-neutral: it
+    is exactly one vector's pair, under a filename and column headings that
+    name none, beside the vector file's own pair of a different length.
+    Same trap as the checkpoint's (2feb357), one file over.
+    """
+
+    def test_the_pair_left_out_was_one_specific_vector_all_along(self):
+        """Why the vector-less pair could not stay: it was never neutral."""
+        for foldback, vector in (("eudicot", "pMDC32B-AtMIR390a-B/c"),
+                                 ("monocot", "pMDC32B-OsMIR390-B/c")):
+            star, fwd, rev = oligo_designer(GUIDE, foldback)
+            self.assertEqual((fwd, rev), make_amirna_oligos(GUIDE, star, vector),
+                             f"{foldback}: the bare hairpin is {vector}'s pair")
+
+    def test_no_vector_no_oligos_in_the_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = _one_result_json(tmp, "out.json")
+        entry = data["results"]["amiRNA Result 1"]
+        self.assertEqual(entry["amiRNA"], GUIDE)
+        self.assertEqual(entry["amiRNA*"], EUDICOT_STAR)
+        self.assertNotIn("Forward Oligo", entry)
+        self.assertNotIn("Reverse Oligo", entry)
+
+    def test_a_named_vector_still_carries_its_pair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = _one_result_json(tmp, "out.json",
+                                    vector="pMDC32B-AtMIR390a-B/c")
+        entry = data["results"]["amiRNA Result 1"]
+        self.assertEqual(entry["Forward Oligo"], EUDICOT_FWD)
+        self.assertEqual(entry["Reverse Oligo"], EUDICOT_REV)
+
+    def test_the_tsv_drops_the_columns_with_the_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = Path(tmp) / "out.tsv"
+            write_amirna_tsv(_one_result_json(tmp, "out.json"), tsv)
+            header = tsv.read_text().splitlines()[0].split("\t")
+            rows = tsv.read_text().splitlines()[1:]
+        self.assertNotIn("Forward Oligo", header)
+        self.assertNotIn("Reverse Oligo", header)
+        self.assertIn("amiRNA*", header)
+        # Still one row per result, and no column slipped out of line.
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0].split("\t")), len(header))
+
+    def test_the_tsv_keeps_the_columns_when_a_vector_is_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = Path(tmp) / "out.tsv"
+            data = _one_result_json(tmp, "out.json",
+                                    vector="pMDC32B-AtMIR390a-B/c")
+            write_amirna_tsv(data, tsv)
+            lines = tsv.read_text().splitlines()
+        header = lines[0].split("\t")
+        self.assertIn("Forward Oligo", header)
+        self.assertEqual(lines[1].split("\t")[header.index("Forward Oligo")],
+                         EUDICOT_FWD)
+
+    def test_applying_a_vector_to_a_cached_run_adds_them_back(self):
+        """clone_vector.py's path: the cache has no oligos, the result does."""
+        with tempfile.TemporaryDirectory() as tmp:
+            data = _one_result_json(tmp, "cache.json")
+            self.assertNotIn("Forward Oligo", data["results"]["amiRNA Result 1"])
+            apply_vector_to_amirna_output(data, "pMDC32B-BS-AtMIR390a-A18G-B/c")
+        entry = data["results"]["amiRNA Result 1"]
+        self.assertEqual(
+            entry["Forward Oligo"],
+            make_amirna_oligos(GUIDE, EUDICOT_STAR,
+                               "pMDC32B-BS-AtMIR390a-A18G-B/c")[0])
+        # The 58-nt pair Alberto reported, rebuilt from a cache holding none.
+        self.assertEqual(len(entry["Forward Oligo"]), 58)
+
+
+class VectorMenuFollowsTheFoldbackTest(unittest.TestCase):
+    """
+    The menu used to offer all four amiRNA vectors whatever -t said, so
+    option 2 (monocot) under the default foldback was a choice that could
+    only end in check_vector_foldback's error.
+    """
+
+    def _menu(self, foldback, choice="1"):
+        printed = []
+        with unittest.mock.patch("builtins.input", return_value=choice), \
+             unittest.mock.patch("builtins.print", side_effect=printed.append):
+            picked = select_vector("amiRNA", foldback)
+        return picked, "\n".join(str(p) for p in printed)
+
+    def test_monocot_is_offered_only_its_own_vector(self):
+        picked, menu = self._menu("monocot")
+        self.assertEqual(picked, "pMDC32B-OsMIR390-B/c")
+        for eudicot_vector in (v for v, spec in AMIRNA_VECTORS.items()
+                               if spec[3] == "eudicot"):
+            self.assertNotIn(eudicot_vector, menu)
+
+    def test_eudicot_is_not_offered_the_monocot_vector(self):
+        _, menu = self._menu("eudicot")
+        self.assertNotIn("pMDC32B-OsMIR390-B/c", menu)
+        self.assertIn("pMDC32B-BS-AtMIR390a-A18G-B/c", menu)
+
+    def test_every_offered_vector_passes_the_check(self):
+        """The menu and the gate agree: nothing offered can be refused."""
+        for foldback in ("eudicot", "monocot"):
+            for choice in range(1, 1 + sum(1 for spec in AMIRNA_VECTORS.values()
+                                           if spec[3] == foldback)):
+                picked, _ = self._menu(foldback, str(choice))
+                check_vector_foldback(picked, foldback)   # must not sys.exit
+
+    def test_no_foldback_still_offers_everything(self):
+        """clone_vector.py and older callers pass none."""
+        _, menu = self._menu(None)
+        for vector in AMIRNA_VECTORS:
+            self.assertIn(vector, menu)
+
+
+class StaleVectorFilesAreFlaggedTest(unittest.TestCase):
+    """
+    Each vector writes its own file and nothing rewrites the others, so a
+    rerun that finds more sites leaves the earlier vector's file holding
+    fewer. They are never deleted or rewritten — they are a real result for
+    their own vector — but the run says they are there.
+    """
+
+    def _note(self, names, vector_suffix="pMDC32B-OsMIR390-Bc"):
+        printed = []
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in names:
+                (Path(tmp) / name).write_text("{}")
+            with unittest.mock.patch("builtins.print", side_effect=printed.append):
+                _warn_stale_vector_files(tmp, "job_amiRNA", vector_suffix)
+        return "\n".join(str(p) for p in printed)
+
+    def test_another_vectors_file_is_named(self):
+        note = self._note(["job_amiRNA_pMDC32B-AtMIR390a-Bc_psams.json",
+                           "job_amiRNA_pMDC32B-OsMIR390-Bc_psams.json"])
+        self.assertIn("job_amiRNA_pMDC32B-AtMIR390a-Bc_psams.json", note)
+        self.assertNotIn("job_amiRNA_pMDC32B-OsMIR390-Bc_psams.json", note)
+
+    def test_nothing_is_said_when_this_run_is_the_only_vector(self):
+        self.assertEqual(
+            self._note(["job_amiRNA_pMDC32B-OsMIR390-Bc_psams.json"]), "")
+
+    def test_the_vector_less_copy_is_not_mistaken_for_a_vector(self):
+        """{run_key}_psams.json is refreshed in place, not flagged."""
+        self.assertEqual(self._note(["job_amiRNA_psams.json"]), "")
+
+    def test_another_runs_files_are_left_alone(self):
+        self.assertEqual(
+            self._note(["other_amiRNA_pMDC32B-AtMIR390a-Bc_psams.json"]), "")
 
 
 if __name__ == "__main__":

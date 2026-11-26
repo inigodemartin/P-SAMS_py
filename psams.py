@@ -66,6 +66,28 @@ def _warn_if_insufficient(opt_count: int, limit: int, unlimit: bool, gene_set: i
         print(f"WARNING: only {opt_count} optimal site(s) were found{label} (fewer than the requested limit of {limit}).")
 
 
+def _warn_stale_vector_files(output_folder, run_key: str, vector_suffix: str) -> None:
+    """
+    Point out results for other vectors left in this folder by earlier
+    runs.
+
+    Every vector writes its own {run_key}_{vector}_psams.* and nothing
+    rewrites the others, so a rerun that finds more sites than the one
+    before leaves those files behind holding fewer — same run, same
+    folder, different answers, and only the filename tells them apart.
+    They are not deleted or rewritten here: they are a real result for
+    their own vector and may still be in use. Rerunning with that -V
+    regenerates them from the cache, without TargetFinder.
+    """
+    others = sorted(p.name for p in Path(output_folder).glob(f"{run_key}_*_psams.json")
+                    if p.name != f"{run_key}_{vector_suffix}_psams.json")
+    if others:
+        print("NOTE: this folder also holds results for other vectors, written by earlier "
+              f"runs and not updated now ({', '.join(others)}). If this run found a "
+              "different number of sites, they no longer agree with the files above; "
+              "rerun with that -V to refresh them.")
+
+
 def main():
     
     ################################
@@ -90,7 +112,7 @@ def main():
     # known, which happens in the separate clone_vector.py step below.
     vector = None
     if args.vector and construct == "amiRNA":
-        vector = select_vector(construct)
+        vector = select_vector(construct, foldback)
         # The vector and -t/--foldback are two names for the same choice:
         # the amiRNA* this run designs only pairs with its own precursor's
         # arms (see check_vector_foldback).
@@ -255,7 +277,8 @@ def main():
 
         _warn_if_insufficient(opt_count, limit, unlimit)
 
-        result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget, foldback=foldback, species=species_names)
+        base_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, base_output, no_offtarget=noofftarget, foldback=foldback, species=species_names)
+        result_data = base_data
 
         if vector:
             for results in [opt_results, subopt_results]:
@@ -266,6 +289,19 @@ def main():
             vector_output = output_folder / f"{run_key}_{vector_filename_suffix(vector)}_psams.json"
             result_data = amirna_json(opt_count, subopt_count, opt_results, subopt_results, vector_output, vector=vector, no_offtarget=noofftarget, foldback=foldback, species=species_names)
             write_amirna_tsv(result_data, vector_output.with_suffix(".tsv"))
+            # A vector-less copy of this run may already be in the folder
+            # from an earlier run (the else branch below writes it). It
+            # carries the same name as the one this run would write, so if
+            # this run found more sites than that one, the folder ends up
+            # with one file name standing for two different results.
+            # Refresh it where it exists; never create it here, since
+            # without --vector it is the result and with one it is not.
+            if visible_output.exists():
+                shutil.copy2(base_output, visible_output)
+            visible_tsv = output_folder / f"{run_key}_psams.tsv"
+            if visible_tsv.exists():
+                write_amirna_tsv(base_data, visible_tsv)
+            _warn_stale_vector_files(output_folder, run_key, vector_filename_suffix(vector))
         else:
             # No vector selected: the cache is the only result, surface it.
             shutil.copy2(base_output, visible_output)

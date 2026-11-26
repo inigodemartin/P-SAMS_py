@@ -82,11 +82,26 @@ def make_syntasirna_oligos(syn_guides: list, vector: str, target_site: str = Non
     return _make_oligos(fwd_prefix, rev_prefix, body)
 
 
-def select_vector(construct: str) -> str:
-    """Interactively prompt the user to pick a cloning vector for the given construct type."""
-    vectors = list(AMIRNA_VECTORS if construct == "amiRNA" else SYNTASIRNA_VECTORS)
+def select_vector(construct: str, foldback: str = None) -> str:
+    """
+    Interactively prompt the user to pick a cloning vector for the given
+    construct type.
 
-    print("\nAvailable cloning vectors:")
+    For amiRNA the menu only offers the vectors built on this run's
+    foldback: the others cannot take its amiRNA* (see
+    check_vector_foldback), so offering them is offering a choice that can
+    only end in an error. The numbering is therefore the foldback's own,
+    not a fixed list — the vector names are printed in full, and the
+    README lists which foldback each belongs to.
+    """
+    if construct == "amiRNA":
+        vectors = [v for v, spec in AMIRNA_VECTORS.items()
+                   if foldback is None or spec[3] == foldback]
+    else:
+        vectors = list(SYNTASIRNA_VECTORS)
+
+    label = f" for the {foldback} foldback" if construct == "amiRNA" and foldback else ""
+    print(f"\nAvailable cloning vectors{label}:")
     for i, name in enumerate(vectors, start=1):
         print(f"  {i}. {name}")
 

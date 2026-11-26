@@ -1234,29 +1234,38 @@ def amirna_json(opt_count, sub_count, opt, sub, output_file, vector=None, no_off
         output["species"] = list(species)
     result_count = 0
 
+    def _entry(site):
+        """
+        Cloning oligos belong only in a result that names the vector they
+        were built for. Without --vector none has been chosen yet, and the
+        pair the pipeline computed is the bare foldback hairpin — which
+        happens to be exactly one vector's pair (pMDC32B-AtMIR390a-B/c for
+        eudicot, pMDC32B-OsMIR390-B/c for monocot) without saying so
+        anywhere, under the same "Forward Oligo" heading the
+        vector-specific file uses and at a different length. That is the
+        trap 2feb357 took out of the checkpoint, so it is left out here
+        too: a -V rerun or clone_vector.py rebuilds the pair from
+        amiRNA/amiRNA* for the vector actually asked for (see
+        apply_vector_to_amirna_output), which is all it ever needed.
+        """
+        entry = {"amiRNA": site["guide"], "amiRNA*": site["star"]}
+        if vector:
+            entry["Forward Oligo"] = site["oligo1"]
+            entry["Reverse Oligo"] = site["oligo2"]
+        entry["TargetFinder"] = _extract_tf_hits(site["tf"])
+        return entry
+
     # Optimal / generic results
     for i in range(1, opt_count + 1):
         result_count += 1
-        output[section_key][f"{entry_label} {result_count}"] = {
-            "amiRNA": opt[i]["guide"],
-            "amiRNA*": opt[i]["star"],
-            "Forward Oligo": opt[i]["oligo1"],
-            "Reverse Oligo": opt[i]["oligo2"],
-            "TargetFinder": _extract_tf_hits(opt[i]["tf"])
-        }
+        output[section_key][f"{entry_label} {result_count}"] = _entry(opt[i])
 
     # Suboptimal results (only when off-target checking is enabled)
     if not no_offtarget:
         result_count = 0
         for i in range(1, sub_count + 1):
             result_count += 1
-            output["suboptimal"][f"amiRNA Suboptimal Result {result_count}"] = {
-                "amiRNA": sub[i]["guide"],
-                "amiRNA*": sub[i]["star"],
-                "Forward Oligo": sub[i]["oligo1"],
-                "Reverse Oligo": sub[i]["oligo2"],
-                "TargetFinder": _extract_tf_hits(sub[i]["tf"])
-            }
+            output["suboptimal"][f"amiRNA Suboptimal Result {result_count}"] = _entry(sub[i])
 
     with open(output_file, "w") as out:
         json.dump(output, out, indent=2)
@@ -1273,11 +1282,13 @@ def write_amirna_tsv(data: dict, tsv_path) -> None:
     Rows keep the original result order; within a result, hits are ordered
     by Target accession, ascending (natural sort).
 
-    Unlike syntasiRNA, amiRNA's Forward/Reverse Oligo are meaningful per
-    result (the foldback hairpin insert for that one guide, or — once a
-    vector is chosen — that guide's vector-specific cloning oligos), so
-    they're kept as regular columns rather than a separate header block.
+    Unlike syntasiRNA, amiRNA's cloning oligos are meaningful per result
+    (that one guide's vector-specific pair), so they are regular columns
+    rather than a separate header block. They appear only once a vector
+    has been chosen — see amirna_json — so a run without --vector writes
+    the same table without those two columns.
     """
+    has_oligos = bool(data.get("vector"))
     rows = []
     hit_keys = []  # union of hit fields, in first-seen order
 
@@ -1306,10 +1317,16 @@ def write_amirna_tsv(data: dict, tsv_path) -> None:
     # Target accession pulled out to the third column since it's the
     # identifying field readers scan for first; the rest keep hit_keys' order.
     other_hit_keys = [k for k in hit_keys if k != "Target accession"]
-    header = ["Type", "Site_index", "Target accession", "amiRNA", "amiRNA*", "Forward Oligo", "Reverse Oligo"] + other_hit_keys
+    header = ["Type", "Site_index", "Target accession", "amiRNA", "amiRNA*"]
+    if has_oligos:
+        header += ["Forward Oligo", "Reverse Oligo"]
+    header += other_hit_keys
     with open(tsv_path, "w") as out:
         out.write("\t".join(header) + "\n")
         for section, site, guide, star, fwd, rev, hit in rows:
-            values = [section, site, hit.get("Target accession", ""), guide, star, fwd, rev] + [str(hit.get(k, "")) for k in other_hit_keys]
+            values = [section, site, hit.get("Target accession", ""), guide, star]
+            if has_oligos:
+                values += [fwd, rev]
+            values += [str(hit.get(k, "")) for k in other_hit_keys]
             out.write("\t".join(values) + "\n")
 

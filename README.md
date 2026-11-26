@@ -191,12 +191,11 @@ Select construct type:
   2. syntasiRNA
 Select construct [1-2]: 1
 
-Available cloning vectors:
+Available cloning vectors for the eudicot foldback:
   1. pMDC32B-AtMIR390a-B/c
-  2. pMDC32B-OsMIR390-B/c
-  3. pMDC32B-BS-AtMIR390a-B/c
-  4. pMDC32B-BS-AtMIR390a-A18G-B/c
-Select a vector [1-4]: 1
+  2. pMDC32B-BS-AtMIR390a-B/c
+  3. pMDC32B-BS-AtMIR390a-A18G-B/c
+Select a vector [1-3]: 1
 ```
 
 ### Cloning vectors (`-V`)
@@ -262,12 +261,11 @@ python3 psams.py -a Nbe01g01610.7 -s Nicotiana_benthamiana \
 ```
 
 ```
-Available cloning vectors:
+Available cloning vectors for the eudicot foldback:
   1. pMDC32B-AtMIR390a-B/c
-  2. pMDC32B-OsMIR390-B/c
-  3. pMDC32B-BS-AtMIR390a-B/c
-  4. pMDC32B-BS-AtMIR390a-A18G-B/c
-Select a vector [1-4]: 1
+  2. pMDC32B-BS-AtMIR390a-B/c
+  3. pMDC32B-BS-AtMIR390a-A18G-B/c
+Select a vector [1-3]: 1
 ```
 
 The output filename gets an `_amiRNA` construct tag plus the chosen vector
@@ -290,6 +288,16 @@ Reusing cached results and generating cloning oligos for vector 'pMDC32B-BS-AtMI
 Output: runs/Nbe01g01610_psams_output/Nbe01g01610_amiRNA_pMDC32B-BS-AtMIR390a-Bc_psams.json
 Exiting script.
 ```
+
+Each vector writes its own `{run_key}_{vector}_psams.*` and no run rewrites
+another vector's files, so if a later run finds more sites than an earlier
+one, the earlier vector's files are left holding fewer. They are never
+deleted or overwritten — they are a real result for their own vector — but
+a run that finds other vectors' files in the folder says so, and rerunning
+with that `-V` regenerates them from the cache. The vector-agnostic
+`{run_key}_psams.json`/`.tsv`, which carries the same name whatever vector
+is chosen, *is* refreshed where it already exists, so it cannot be left
+standing for a different set of results than the one in `.cache/`.
 
 **Re-running amiRNA with a different `-t/--foldback` is a different design,
 not a rerun.** The guides and their TargetFinder results are the same for both
@@ -501,7 +509,7 @@ candidates — and the results are merged into the existing TSVs and JSON.
 
 ```
 runs/Nbe01g01610_psams_output/
-├── Nbe01g01610_amiRNA_psams.json                        # vector-agnostic cache / final result
+├── Nbe01g01610_amiRNA_psams.json                        # vector-agnostic cache / final result (no oligos)
 ├── Nbe01g01610_amiRNA_psams.tsv                         # flattened from the JSON above, one row per hit
 ├── Nbe01g01610_amiRNA_pMDC32B-BS-AtMIR390a-Bc_psams.json  # only created when -V is used
 ├── Nbe01g01610_amiRNA_pMDC32B-BS-AtMIR390a-Bc_psams.tsv   # ditto, flattened
@@ -519,13 +527,24 @@ Both constructs share the same layout: the optimal/suboptimal TSVs are
 internal checkpoint state, used only to resume an interrupted run, so they
 live hidden in `.cache/` rather than next to the user-facing result.
 
-**The cloning oligos live in exactly one place:** `*_psams.tsv`, in the
-`Forward Oligo` / `Reverse Oligo` columns. The checkpoint TSVs hold guides
-and off-target counts only — never oligos. They are written before a vector
-is known, and the same cache is deliberately reused when the run is repeated
-with a different `-V`, so any oligo stored there would be the wrong one to
-order as soon as the vector changed. Resuming rebuilds the oligos from the
-guide.
+**The cloning oligos live in exactly one place:** the file that names the
+vector they were built for, `{run_key}_{vector}_psams.tsv`, in its
+`Forward Oligo` / `Reverse Oligo` columns. Nothing else in the folder
+carries an oligo:
+
+- the checkpoint TSVs hold guides and off-target counts only. They are
+  written before a vector is known, and the same cache is deliberately
+  reused when the run is repeated with a different `-V`, so any oligo
+  stored there would be the wrong one to order as soon as the vector
+  changed. Resuming rebuilds the oligos from the guide;
+- a run without `-V` writes `{run_key}_psams.json`/`.tsv` with the guide,
+  the amiRNA`*` and the off-targets, and no oligo columns at all. The pair
+  such a run could print is the bare foldback hairpin, which is exactly
+  one vector's pair (`pMDC32B-AtMIR390a-B/c` for eudicot,
+  `pMDC32B-OsMIR390-B/c` for monocot) without naming it, at a different
+  length from the vector file's own columns of the same name. Pick a
+  vector — `-V`, or `clone_vector.py` on the finished run — to get oligos;
+  neither re-runs TargetFinder.
 `{run_key}_psams.tsv` (and, for `amiRNA`, its `-V` counterpart) is the
 actual user-facing table — every result and every TargetFinder hit already
 present in the final JSON, flattened into one row per hit. For

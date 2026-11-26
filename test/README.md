@@ -10,7 +10,7 @@ annotation database or any network access.
 | `test_multi_background.py` | screening off-targets against several transcriptomes at once |
 | `test_unlimit_suboptimal.py` | `-u/--unlimit` reporting every suboptimal result, not just the top 3 |
 | `test_checkpoint_oligos.py` | the checkpoint TSVs no longer carrying a second, disagreeing copy of the cloning oligos |
-| `test_run_consistency.py` | a run's foldback and species staying with its results: the vector, the resumed star and the cached run |
+| `test_run_consistency.py` | a run's foldback and species staying with its results: the vector, the resumed star, the cached run, and where the oligos are written |
 
 ```bash
 conda activate p-sams-py
@@ -209,4 +209,21 @@ the same choice could be stated twice and disagree:
   checked before anything is reused or extended; a run that asks a different
   question is sent to a folder of its own.
 
-Expected output: `Ran 19 tests` and `OK`.
+It also covers the three follow-ups to that audit, same class of bug:
+
+- **Oligos only where the vector is named.** A run without `-V` wrote
+  `Forward`/`Reverse Oligo` holding the bare foldback hairpin — which is
+  exactly `pMDC32B-AtMIR390a-B/c`'s pair (or `pMDC32B-OsMIR390-B/c`'s in
+  monocot) without naming it, under the same headings as the vector file and
+  at a different length. The columns are gone from the vector-less JSON and
+  TSV; `clone_vector.py` and a `-V` rerun add them back from the guide.
+- **The `-V` menu follows the foldback.** It offered all four vectors
+  whatever `-t` said, so the monocot one under the default foldback was a
+  choice that could only end in an error. It now lists this run's foldback
+  only; the tests check nothing offered can be refused by the gate.
+- **Other vectors' files are flagged.** Each vector writes its own files and
+  no run rewrites another's, so an earlier vector's files can hold fewer
+  results. They are never touched, but the run names them; the vector-less
+  copy, which shares its name across runs, is refreshed instead.
+
+Expected output: `Ran 33 tests` and `OK`.
